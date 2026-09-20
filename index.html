@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cape Jazz & Blues - Setlist Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Montserrat:wght@900&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --card-bg: #161f30;
+      --card-border: #23314c;
+      --col-bg: #101624;
+      --cape-periwinkle: #7C93D6;
+      --cape-tagline: #8fa3de;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --ready-a-bg: #064e3b;
+      --ready-a-txt: #34d399;
+      --ready-b-bg: #1e3a8a;
+      --ready-b-txt: #93c5fd;
+      --bass-bg: #581c87;
+      --bass-txt: #d8b4fe;
+      --horns-bg: #78350f;
+      --horns-txt: #fcd34d;
+      --cue-bg: #371923;
+      --cue-border: #6d2335;
+      --cue-txt: #fda4af;
+      --sub-bg: #0d1320;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #080c14;
+      border-bottom: 1px solid #1e293b;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .brand-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-lockup {
+      position: relative;
+      display: inline-block;
+      line-height: 0.9;
+    }
+    .brand-cape {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: var(--cape-periwinkle);
+      letter-spacing: -1px;
+      display: block;
+    }
+    .brand-script {
+      font-family: 'Caveat', cursive;
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      text-shadow: 2px 2px 0 #080c14, -2px -2px 0 #080c14;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .brand-tagline {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: var(--cape-tagline);
+      text-transform: uppercase;
+      margin-top: 4px;
+      display: block;
+    }
+
+    .gig-title-input {
+      background: #162032;
+      border: 1px solid #283754;
+      color: #f8fafc;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      width: 270px;
+    }
+    .gig-title-input:focus { outline: none; border-color: var(--cape-periwinkle); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: #1e293b;
+      color: #f1f5f9;
+      border: 1px solid #334155;
+      padding: 7px 13px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn:hover { background: #334155; border-color: #475569; }
+    .btn-word {
+      background: #1d4ed8;
+      color: #ffffff;
+      border: 1px solid #3b82f6;
+    }
+    .btn-word:hover { background: #2563eb; }
+
+    main {
+      flex: 1;
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 1fr;
+      gap: 16px;
+      max-width: 1650px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .column {
+      background: var(--col-bg);
+      border: 1px solid #1f293d;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 110px);
+      min-height: 640px;
+      overflow: hidden;
+    }
+
+    .column-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #1f293d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0d121e;
+    }
+    .column-header h2 {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #e2e8f0;
+    }
+    .column-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .column-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--cape-periwinkle);
+      background: rgba(124, 147, 214, 0.12);
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+    .btn-cue {
+      font-size: 11px;
+      padding: 3px 7px;
+      background: #24141c;
+      border: 1px solid #54222f;
+      color: #fda4af;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .filter-panel {
+      padding: 10px 14px;
+      border-bottom: 1px solid #1f293d;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #0b0f19;
+    }
+    .search-input {
+      background: #182235;
+      border: 1px solid #283754;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      outline: none;
+      width: 100%;
+    }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      background: #182235;
+      border: 1px solid #283754;
+      color: #94a3b8;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 14px;
+      cursor: pointer;
+    }
+    .chip.active { background: var(--cape-periwinkle); color: #0b0f19; border-color: var(--cape-periwinkle); }
+
+    .set-column-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .song-list-main {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .reserve-section {
+      background: var(--sub-bg);
+      border-top: 1px solid #1f293d;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      max-height: 180px;
+    }
+    .reserve-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .song-list-reserve {
+      min-height: 48px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      border: 1px dashed #243249;
+      border-radius: 6px;
+      padding: 6px;
+      background: #090e17;
+    }
+
+    .song-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      cursor: grab;
+      user-select: none;
+      transition: all 0.1s ease;
+    }
+    .song-card:hover { border-color: var(--cape-periwinkle); background: #1c273c; }
+    .song-card:active { cursor: grabbing; }
+
+    .song-card.card-cue {
+      background: var(--cue-bg);
+      border: 1px dashed var(--cue-border);
+    }
+    .song-card.card-cue .song-title {
+      color: var(--cue-txt);
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 3px;
+    }
+    .song-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .song-duration {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .card-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badges { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .badge {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .badge-ready-a { background: var(--ready-a-bg); color: var(--ready-a-txt); }
+    .badge-ready-b { background: var(--ready-b-bg); color: var(--ready-b-txt); }
+    .badge-bass { background: var(--bass-bg); color: var(--bass-txt); }
+    .badge-horns { background: var(--horns-bg); color: var(--horns-txt); }
+    .genre-tag { font-size: 10px; color: #64748b; font-style: italic; }
+
+    .sortable-ghost { opacity: 0.35; background: var(--cape-periwinkle) !important; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-box {
+      background: #101624;
+      border: 1px solid #23314c;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 620px;
+      padding: 22px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+    .modal-box h3 { margin-bottom: 8px; font-size: 16px; color: #fff; }
+    .modal-box p { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+    .modal-box textarea {
+      width: 100%;
+      height: 250px;
+      background: #182235;
+      color: #f1f5f9;
+      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid #283754;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      resize: none;
+      margin-bottom: 14px;
+    }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand-container">
+      <div class="brand-lockup">
+        <span class="brand-cape">CAPE</span>
+        <span class="brand-script">jazz and blues</span>
+        <span class="brand-tagline">JAZZ AND BLUES...FOR GREAT PARTIES</span>
+      </div>
+      <input type="text" id="gig-title" class="gig-title-input" value="Cotuit Craft Fest. '26 v FINAL">
+    </div>
+
+    <div class="header-actions">
+      <button class="btn" onclick="resetState()">🔄 Reset</button>
+      <button class="btn" onclick="openImportModal()">📥 Import Previous Set</button>
+      <button class="btn" onclick="openPasteModal()">📋 Paste Sheet Data</button>
+      <button class="btn btn-word" onclick="downloadWordDoc()">📄 Download Word Doc</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- CANDIDATES -->
+    <div class="column">
+      <div class="column-header">
+        <h2>Candidates Pool</h2>
+        <span class="column-meta" id="cand-count">0 songs</span>
+      </div>
+      <div class="filter-panel">
+        <input type="text" id="search-input" class="search-input" placeholder="Search title or genre..." oninput="renderAll()">
+        <div class="chip-group">
+          <span class="chip active" id="chip-all" onclick="setReadyFilter('ALL')">All</span>
+          <span class="chip" id="chip-a" onclick="setReadyFilter('A')">Ready A</span>
+          <span class="chip" id="chip-b" onclick="setReadyFilter('B')">Ready B</span>
+          <span class="chip" id="chip-bass" onclick="toggleBadgeFilter('bass')">🎸 Phil Bass</span>
+          <span class="chip" id="chip-horns" onclick="toggleBadgeFilter('horns')">🎺 Horns</span>
+        </div>
+      </div>
+      <div id="list-candidates" class="song-list-main" style="flex:1;"></div>
+    </div>
+
+    <!-- SET ONE -->
+    <div class="column">
+      <div class="column-header">
+        <h2>SET ONE</h2>
+        <div class="column-header-right">
+          <button class="btn-cue" onclick="addStageCue(1)">+ Cue</button>
+          <span class="column-meta" id="set1-meta">0 songs • 0 mins</span>
+        </div>
+      </div>
+      <div class="set-column-body">
+        <div id="list-set1-main" class="song-list-main"></div>
+        <div class="reserve-section">
+          <div class="reserve-header">
+            <span>Reserve (Extras)</span>
+            <span id="set1-reserve-meta" style="font-size:10px;color:#7C93D6;">0 songs</span>
+          </div>
+          <div id="list-set1-reserve" class="song-list-reserve"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SET TWO -->
+    <div class="column">
+      <div class="column-header">
+        <h2>SET TWO</h2>
+        <div class="column-header-right">
+          <button class="btn-cue" onclick="addStageCue(2)">+ Cue</button>
+          <span class="column-meta" id="set2-meta">0 songs • 0 mins</span>
+        </div>
+      </div>
+      <div class="set-column-body">
+        <div id="list-set2-main" class="song-list-main"></div>
+        <div class="reserve-section">
+          <div class="reserve-header">
+            <span>Reserve (Extras)</span>
+            <span id="set2-reserve-meta" style="font-size:10px;color:#7C93D6;">0 songs</span>
+          </div>
+          <div id="list-set2-reserve" class="song-list-reserve"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Universal Modal -->
+  <div id="app-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <h3 id="modal-title">Tool</h3>
+      <p id="modal-desc"></p>
+      <textarea id="modal-text"></textarea>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-word" id="modal-btn">Action</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
+    const SHEET_GID = '477864766';
+
+    let allSheetSongs = [];
+    let candidateSongs = [];
+    
+    let set1Main = [];
+    let set1Reserve = [];
+    let set2Main = [];
+    let set2Reserve = [];
+
+    let currentReadyFilter = 'ALL';
+    let filterBass = false;
+    let filterHorns = false;
+
+    // Helper: Build default Switch Guitars cue card
+    function makeSwitchGuitarsCue() {
+      return {
+        id: 'cue_switch_guitars_default',
+        title: 'Switch guitars',
+        cleanTitle: 'switchguitars',
+        isCue: true,
+        duration: '0:00'
+      };
+    }
+
+    // Default time: 3:00 (180s)
+    function parseDurationToSeconds(durStr) {
+      if (!durStr || String(durStr).trim() === '') return 180;
+      const parts = String(durStr).trim().split(':').map(Number);
+      if (parts.some(isNaN)) return 180;
+
+      if (parts.length === 3) {
+        return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      } else if (parts.length === 2) {
+        return (parts[0] * 60) + parts[1];
+      } else if (parts.length === 1) {
+        return parts[0] * 60;
+      }
+      return 180;
+    }
+
+    function formatCardDuration(durStr) {
+      const totalSec = parseDurationToSeconds(durStr);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    // RESET BUTTON: Re-queries sheet, clears sets, and prepends "Switch guitars" cue
+    function resetState() {
+      fetchSheetJsonp();
+    }
+
+    function fetchSheetJsonp() {
+      const existing = document.getElementById('gviz-jsonp-script');
+      if (existing) existing.remove();
+      const script = document.createElement('script');
+      script.id = 'gviz-jsonp-script';
+      script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}`;
+      document.body.appendChild(script);
+    }
+
+    window.handleGvizResponse = function(response) {
+      if (!response || !response.table || !response.table.rows) return;
+      const rows = response.table.rows;
+      const parsed = [];
+
+      for (let i = 3; i < rows.length; i++) {
+        const c = rows[i].c;
+        if (!c) continue;
+
+        const title = c[0] ? String(c[0].v || '').trim() : '';
+        const genre = c[2] ? String(c[2].v || '').trim() : '';
+        const ready = c[5] ? String(c[5].v || '').trim().toUpperCase() : '';
+        const pBass = c[6] ? String(c[6].v || '').trim() : '';
+        const horns = c[7] ? String(c[7].v || '').trim() : '';
+        const rawDur = c[10] ? String(c[10].f || c[10].v || '').trim() : '';
+
+        if (title && (ready === 'A' || ready === 'B')) {
+          parsed.push({
+            id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
+            title: title,
+            cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            genre: genre,
+            readiness: ready,
+            philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
+            horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
+            duration: formatCardDuration(rawDur),
+            rawDuration: rawDur,
+            isCue: false
+          });
+        }
+      }
+
+      allSheetSongs = parsed;
+      // Put "Switch guitars" cue right at the top of Candidates on reset
+      candidateSongs = [makeSwitchGuitarsCue(), ...allSheetSongs];
+      set1Main = [];
+      set1Reserve = [];
+      set2Main = [];
+      set2Reserve = [];
+      renderAll();
+    };
+
+    function addStageCue(setNum) {
+      const cue = prompt("Enter stage cue (e.g., 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
+      if (!cue) return;
+      const cueItem = {
+        id: 'cue_' + Date.now(),
+        title: cue.trim(),
+        isCue: true,
+        duration: '0:00'
+      };
+      if (setNum === 1) set1Main.push(cueItem);
+      else set2Main.push(cueItem);
+      renderAll();
+    }
+
+    function renderAll() {
+      const q = (document.getElementById('search-input').value || '').toLowerCase();
+      const candEl = document.getElementById('list-candidates');
+      const s1MainEl = document.getElementById('list-set1-main');
+      const s1ResEl = document.getElementById('list-set1-reserve');
+      const s2MainEl = document.getElementById('list-set2-main');
+      const s2ResEl = document.getElementById('list-set2-reserve');
+
+      candEl.innerHTML = '';
+      s1MainEl.innerHTML = '';
+      s1ResEl.innerHTML = '';
+      s2MainEl.innerHTML = '';
+      s2ResEl.innerHTML = '';
+
+      const filteredCandidates = candidateSongs.filter(s => {
+        if (s.isCue) return true; // always show stage cues
+        if (currentReadyFilter !== 'ALL' && s.readiness !== currentReadyFilter) return false;
+        if (filterBass && !s.philBass) return false;
+        if (filterHorns && !s.horns) return false;
+        if (q && !s.title.toLowerCase().includes(q) && !s.genre.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const songCountOnly = filteredCandidates.filter(s => !s.isCue).length;
+      document.getElementById('cand-count').innerText = `${songCountOnly} songs`;
+      filteredCandidates.forEach(s => candEl.appendChild(createCard(s)));
+
+      set1Main.forEach(s => s1MainEl.appendChild(createCard(s)));
+      set1Reserve.forEach(s => s1ResEl.appendChild(createCard(s)));
+      set2Main.forEach(s => s2MainEl.appendChild(createCard(s)));
+      set2Reserve.forEach(s => s2ResEl.appendChild(createCard(s)));
+
+      updateMeta('set1-meta', set1Main);
+      updateMeta('set2-meta', set2Main);
+      document.getElementById('set1-reserve-meta').innerText = `${set1Reserve.filter(s => !s.isCue).length} songs`;
+      document.getElementById('set2-reserve-meta').innerText = `${set2Reserve.filter(s => !s.isCue).length} songs`;
+    }
+
+    function createCard(s) {
+      const card = document.createElement('div');
+      card.className = 'song-card' + (s.isCue ? ' card-cue' : '');
+      card.setAttribute('data-id', s.id);
+
+      if (s.isCue) {
+        card.innerHTML = `
+          <div class="card-top">
+            <span class="song-title">📌 ${s.title}</span>
+            <span style="font-size:11px;color:#fda4af;cursor:pointer;" onclick="removeCue('${s.id}')">✕</span>
+          </div>
+        `;
+        return card;
+      }
+
+      card.innerHTML = `
+        <div class="card-top">
+          <span class="song-title">${s.title}</span>
+          <span class="song-duration">${s.duration}</span>
+        </div>
+        <div class="card-bottom">
+          <div class="badges">
+            <span class="badge badge-ready-${s.readiness.toLowerCase()}">Ready ${s.readiness}</span>
+            ${s.philBass ? '<span class="badge badge-bass">🎸 Phil Bass</span>' : ''}
+            ${s.horns ? '<span class="badge badge-horns">🎺 Horns</span>' : ''}
+          </div>
+          ${s.genre ? `<span class="genre-tag">${s.genre}</span>` : ''}
+        </div>
+      `;
+      return card;
+    }
+
+    function removeCue(id) {
+      candidateSongs = candidateSongs.filter(i => i.id !== id);
+      set1Main = set1Main.filter(i => i.id !== id);
+      set1Reserve = set1Reserve.filter(i => i.id !== id);
+      set2Main = set2Main.filter(i => i.id !== id);
+      set2Reserve = set2Reserve.filter(i => i.id !== id);
+      renderAll();
+    }
+
+    function updateMeta(elId, list) {
+      let totalSec = 0;
+      let count = 0;
+      list.forEach(s => {
+        if (!s.isCue) {
+          count++;
+          totalSec += parseDurationToSeconds(s.rawDuration || s.duration);
+        }
+      });
+      const m = Math.round(totalSec / 60);
+      document.getElementById(elId).innerText = `${count} songs • ${m} mins`;
+    }
+
+    function initDnD() {
+      const opts = {
+        group: 'band-sets',
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        onEnd: function() {
+          candidateSongs = getListOrder('list-candidates');
+          set1Main = getListOrder('list-set1-main');
+          set1Reserve = getListOrder('list-set1-reserve');
+          set2Main = getListOrder('list-set2-main');
+          set2Reserve = getListOrder('list-set2-reserve');
+          renderAll();
+        }
+      };
+      new Sortable(document.getElementById('list-candidates'), opts);
+      new Sortable(document.getElementById('list-set1-main'), opts);
+      new Sortable(document.getElementById('list-set1-reserve'), opts);
+      new Sortable(document.getElementById('list-set2-main'), opts);
+      new Sortable(document.getElementById('list-set2-reserve'), opts);
+    }
+
+    function getListOrder(containerId) {
+      const ids = Array.from(document.getElementById(containerId).children).map(el => el.getAttribute('data-id'));
+      const allPool = [
+        ...candidateSongs,
+        ...set1Main,
+        ...set1Reserve,
+        ...set2Main,
+        ...set2Reserve,
+        ...allSheetSongs
+      ];
+      return ids.map(id => allPool.find(s => s && s.id === id)).filter(Boolean);
+    }
+
+    function setReadyFilter(val) {
+      currentReadyFilter = val;
+      ['all', 'a', 'b'].forEach(k => document.getElementById('chip-' + k).classList.remove('active'));
+      document.getElementById('chip-' + val.toLowerCase()).classList.add('active');
+      renderAll();
+    }
+
+    function toggleBadgeFilter(type) {
+      if (type === 'bass') {
+        filterBass = !filterBass;
+        document.getElementById('chip-bass').classList.toggle('active', filterBass);
+      } else {
+        filterHorns = !filterHorns;
+        document.getElementById('chip-horns').classList.toggle('active', filterHorns);
+      }
+      renderAll();
+    }
+
+    function downloadWordDoc() {
+      const gigTitle = document.getElementById('gig-title').value || "Cape Jazz & Blues Setlist";
+
+      let s1Count = 0; let s1Sec = 0;
+      set1Main.forEach(i => {
+        if (!i.isCue) {
+          s1Count++;
+          s1Sec += parseDurationToSeconds(i.rawDuration || i.duration);
+        }
+      });
+      const s1Mins = Math.round(s1Sec / 60);
+
+      let s2Count = 0; let s2Sec = 0;
+      set2Main.forEach(i => {
+        if (!i.isCue) {
+          s2Count++;
+          s2Sec += parseDurationToSeconds(i.rawDuration || i.duration);
+        }
+      });
+      const s2Mins = Math.round(s2Sec / 60);
+
+      let col1Html = `<div class="set-title">SET ONE</div>`;
+      set1Main.forEach(item => {
+        if (item.isCue) col1Html += `<div class="cue-item">${item.title}</div>`;
+        else col1Html += `<div class="song-item">${item.title}</div>`;
+      });
+      col1Html += `<div class="summary-line">${s1Count} songs ${s1Mins} mins.</div>`;
+
+      if (set1Reserve.length > 0) {
+        col1Html += `<div class="reserve-title">Reserve</div>`;
+        set1Reserve.forEach(item => {
+          col1Html += `<div class="song-item">${item.title}</div>`;
+        });
+      }
+
+      let col2Html = `<div class="set-title">SET TWO</div>`;
+      set2Main.forEach(item => {
+        if (item.isCue) col2Html += `<div class="cue-item">${item.title}</div>`;
+        else col2Html += `<div class="song-item">${item.title}</div>`;
+      });
+      col2Html += `<div class="summary-line">${s2Count} Songs – ${s2Mins} mins.</div>`;
+
+      if (set2Reserve.length > 0) {
+        col2Html += `<div class="reserve-title">Reserve</div>`;
+        set2Reserve.forEach(item => {
+          col2Html += `<div class="song-item">${item.title}</div>`;
+        });
+      }
+
+      const docContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset='utf-8'>
+          <title>${gigTitle}</title>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <style>
+            @page {
+              size: 8.5in 11in;
+              margin: 0.75in 0.75in 0.75in 0.75in;
+              mso-header-margin: 0.5in;
+              mso-footer-margin: 0.5in;
+            }
+            body {
+              font-family: 'Aptos', 'Calibri', 'Segoe UI', Arial, sans-serif;
+              font-size: 13.5pt;
+              line-height: 1.25;
+              color: #000000;
+              margin: 0;
+              padding: 0;
+            }
+            .gig-title {
+              font-size: 15pt;
+              font-weight: bold;
+              margin-bottom: 12pt;
+              color: #000000;
+            }
+            table.two-col-layout {
+              width: 100%;
+              border-collapse: collapse;
+              border: none;
+              mso-table-lspace: 0pt;
+              mso-table-rspace: 0pt;
+            }
+            td.col-set {
+              width: 50%;
+              vertical-align: top;
+              padding-right: 20pt;
+            }
+            td.col-set + td.col-set {
+              padding-right: 0pt;
+              padding-left: 20pt;
+            }
+            .set-title {
+              font-size: 14pt;
+              font-weight: bold;
+              margin-bottom: 6pt;
+              text-transform: uppercase;
+            }
+            .song-item {
+              margin-top: 1.5pt;
+              margin-bottom: 1.5pt;
+            }
+            .cue-item {
+              margin-top: 3pt;
+              margin-bottom: 3pt;
+              font-style: italic;
+              color: #111111;
+            }
+            .summary-line {
+              font-weight: bold;
+              margin-top: 6pt;
+              margin-bottom: 14pt;
+            }
+            .reserve-title {
+              font-size: 13.5pt;
+              font-weight: bold;
+              margin-top: 10pt;
+              margin-bottom: 3pt;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="gig-title">${gigTitle}</div>
+          <table class="two-col-layout">
+            <tr>
+              <td class="col-set">
+                ${col1Html}
+              </td>
+              <td class="col-set">
+                ${col2Html}
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = gigTitle.replace(/[^a-zA-Z0-9_-]/g, '_') + '.doc';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function openImportModal() {
+      document.getElementById('modal-title').innerText = 'Import Previous Setlist';
+      document.getElementById('modal-desc').innerText = 'Paste the text from an old Word doc, email, or setlist. The app will reconstruct Set 1, Set 2, Reserves, and Cues, matching each song with its sheet metadata!';
+      document.getElementById('modal-text').value = '';
+      document.getElementById('modal-text').placeholder = "Cotuit Craft Fest. ’26\nSET ONE\nTake the A Train\nSwitch guitars\n...\nSET TWO\nSF Bay Blues\n...\nReserve\nWichita Lineman";
+      const btn = document.getElementById('modal-btn');
+      btn.innerText = 'Reconstruct Setlist';
+      btn.onclick = parsePreviousSetlistText;
+      document.getElementById('app-modal').style.display = 'flex';
+    }
+
+    function parsePreviousSetlistText() {
+      const text = document.getElementById('modal-text').value;
+      if (!text.trim()) return;
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      let currentSection = 'HEADER';
+
+      const s1 = [];
+      const s1Res = [];
+      const s2 = [];
+      const s2Res = [];
+
+      lines.forEach(line => {
+        const up = line.toUpperCase();
+        
+        if (up.includes('SET ONE') || up === 'SET 1') {
+          currentSection = 'SET1';
+          return;
+        }
+        if (up.includes('SET TWO') || up === 'SET 2') {
+          currentSection = 'SET2';
+          return;
+        }
+        if (up === 'RESERVE' || up.startsWith('RESERVE')) {
+          if (currentSection === 'SET1' || currentSection === 'SET1_RES') currentSection = 'SET1_RES';
+          else currentSection = 'SET2_RES';
+          return;
+        }
+
+        if (line.match(/\d+\s+songs/i) || line.match(/\d+\s+mins/i)) {
+          return;
+        }
+
+        if (currentSection === 'HEADER') {
+          document.getElementById('gig-title').value = line;
+          return;
+        }
+
+        const clean = line.replace(/^\d+[\.\)]\s*/, '').trim();
+        if (!clean) return;
+
+        const isKnownCue = clean.toLowerCase().includes('switch guitar') || 
+                           clean.toLowerCase().includes('acoustic guitar') || 
+                           clean.toLowerCase().includes('break') || 
+                           clean.toLowerCase().startsWith('tune');
+
+        let matchedItem = null;
+
+        if (isKnownCue) {
+          matchedItem = {
+            id: 'cue_' + Math.random().toString(36).substr(2, 9),
+            title: clean,
+            isCue: true,
+            duration: '0:00'
+          };
+        } else {
+          const needle = clean.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const found = allSheetSongs.find(s => s.cleanTitle === needle || s.cleanTitle.includes(needle) || needle.includes(s.cleanTitle));
+
+          if (found) {
+            matchedItem = { ...found };
+          } else {
+            matchedItem = {
+              id: 'unmatched_' + Math.random().toString(36).substr(2, 9),
+              title: clean,
+              cleanTitle: clean.toLowerCase().replace(/[^a-z0-9]/g, ''),
+              genre: 'Pasted',
+              readiness: 'A',
+              philBass: false,
+              horns: false,
+              duration: '3:00',
+              rawDuration: '3:00',
+              isCue: false
+            };
+          }
+        }
+
+        if (currentSection === 'SET1') s1.push(matchedItem);
+        else if (currentSection === 'SET1_RES') s1Res.push(matchedItem);
+        else if (currentSection === 'SET2') s2.push(matchedItem);
+        else if (currentSection === 'SET2_RES') s2Res.push(matchedItem);
+      });
+
+      set1Main = s1;
+      set1Reserve = s1Res;
+      set2Main = s2;
+      set2Reserve = s2Res;
+
+      const usedIds = new Set([...set1Main, ...set1Reserve, ...set2Main, ...set2Reserve].map(s => s.id));
+      candidateSongs = [makeSwitchGuitarsCue(), ...allSheetSongs.filter(s => !usedIds.has(s.id))];
+
+      renderAll();
+      closeModal();
+    }
+
+    function openPasteModal() {
+      document.getElementById('modal-title').innerText = 'Paste Spreadsheet Rows';
+      document.getElementById('modal-desc').innerText = 'If offline, copy rows directly from your Google Sheet and paste them here.';
+      document.getElementById('modal-text').value = '';
+      document.getElementById('modal-text').placeholder = 'Paste rows copied from Google Sheets here...';
+      const btn = document.getElementById('modal-btn');
+      btn.innerText = 'Parse Sheet Rows';
+      btn.onclick = function() {
+        parsePastedText(document.getElementById('modal-text').value);
+        closeModal();
+      };
+      document.getElementById('app-modal').style.display = 'flex';
+    }
+
+    function parsePastedText(text) {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const parsed = [];
+      lines.forEach((line, idx) => {
+        const cols = line.split('\t').length > 1 ? line.split('\t') : line.split(',');
+        const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
+        const title = clean[0] || '';
+        const genre = clean[2] || '';
+        const ready = (clean[5] || '').toUpperCase();
+        const pBass = clean[6] || '';
+        const horns = clean[7] || '';
+        const rawDur = clean[10] || '';
+        if (title && (ready === 'A' || ready === 'B')) {
+          parsed.push({
+            id: 'pasted_' + idx,
+            title: title,
+            cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            genre: genre,
+            readiness: ready,
+            philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
+            horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
+            duration: formatCardDuration(rawDur),
+            rawDuration: rawDur,
+            isCue: false
+          });
+        }
+      });
+      if (parsed.length > 0) {
+        allSheetSongs = parsed;
+        candidateSongs = [makeSwitchGuitarsCue(), ...allSheetSongs];
+        set1Main = [];
+        set1Reserve = [];
+        set2Main = [];
+        set2Reserve = [];
+        renderAll();
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('app-modal').style.display = 'none';
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initDnD();
+      resetState();
+    });
+  </script>
+</body>
+</html>
