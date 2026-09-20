@@ -475,6 +475,9 @@
     const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
     const SHEET_GID = '477864766';
 
+    // MASTER REGISTRY (Prevents any item from ever vanishing)
+    const itemRegistry = new Map();
+
     let allSheetSongs = [];
     let candidateSongs = [];
     
@@ -487,18 +490,18 @@
     let filterBass = false;
     let filterHorns = false;
 
-    // Helper: Build default Switch Guitars cue card
-    function makeSwitchGuitarsCue() {
-      return {
-        id: 'cue_switch_guitars_default',
+    function createSwitchGuitarsCue() {
+      const cue = {
+        id: 'cue_' + Math.random().toString(36).substr(2, 9),
         title: 'Switch guitars',
         cleanTitle: 'switchguitars',
         isCue: true,
         duration: '0:00'
       };
+      itemRegistry.set(cue.id, cue);
+      return cue;
     }
 
-    // Default time: 3:00 (180s)
     function parseDurationToSeconds(durStr) {
       if (!durStr || String(durStr).trim() === '') return 180;
       const parts = String(durStr).trim().split(':').map(Number);
@@ -521,7 +524,6 @@
       return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
 
-    // RESET BUTTON: Re-queries sheet, clears sets, and prepends "Switch guitars" cue
     function resetState() {
       fetchSheetJsonp();
     }
@@ -539,6 +541,7 @@
       if (!response || !response.table || !response.table.rows) return;
       const rows = response.table.rows;
       const parsed = [];
+      itemRegistry.clear();
 
       for (let i = 3; i < rows.length; i++) {
         const c = rows[i].c;
@@ -552,7 +555,7 @@
         const rawDur = c[10] ? String(c[10].f || c[10].v || '').trim() : '';
 
         if (title && (ready === 'A' || ready === 'B')) {
-          parsed.push({
+          const song = {
             id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
             title: title,
             cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
@@ -563,13 +566,14 @@
             duration: formatCardDuration(rawDur),
             rawDuration: rawDur,
             isCue: false
-          });
+          };
+          itemRegistry.set(song.id, song);
+          parsed.push(song);
         }
       }
 
       allSheetSongs = parsed;
-      // Put "Switch guitars" cue right at the top of Candidates on reset
-      candidateSongs = [makeSwitchGuitarsCue(), ...allSheetSongs];
+      candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs];
       set1Main = [];
       set1Reserve = [];
       set2Main = [];
@@ -578,20 +582,28 @@
     };
 
     function addStageCue(setNum) {
-      const cue = prompt("Enter stage cue (e.g., 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
-      if (!cue) return;
+      const cueText = prompt("Enter stage cue (e.g., 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
+      if (!cueText) return;
       const cueItem = {
         id: 'cue_' + Date.now(),
-        title: cue.trim(),
+        title: cueText.trim(),
+        cleanTitle: cueText.toLowerCase().replace(/[^a-z0-9]/g, ''),
         isCue: true,
         duration: '0:00'
       };
+      itemRegistry.set(cueItem.id, cueItem);
       if (setNum === 1) set1Main.push(cueItem);
       else set2Main.push(cueItem);
       renderAll();
     }
 
     function renderAll() {
+      // Ensure there is always a "Switch guitars" card ready at top of Candidates
+      const hasSwitchInCandidates = candidateSongs.some(s => s.isCue && s.title.toLowerCase().includes('switch guitar'));
+      if (!hasSwitchInCandidates) {
+        candidateSongs.unshift(createSwitchGuitarsCue());
+      }
+
       const q = (document.getElementById('search-input').value || '').toLowerCase();
       const candEl = document.getElementById('list-candidates');
       const s1MainEl = document.getElementById('list-set1-main');
@@ -606,7 +618,7 @@
       s2ResEl.innerHTML = '';
 
       const filteredCandidates = candidateSongs.filter(s => {
-        if (s.isCue) return true; // always show stage cues
+        if (s.isCue) return true;
         if (currentReadyFilter !== 'ALL' && s.readiness !== currentReadyFilter) return false;
         if (filterBass && !s.philBass) return false;
         if (filterHorns && !s.horns) return false;
@@ -689,6 +701,7 @@
         animation: 150,
         ghostClass: 'sortable-ghost',
         onEnd: function() {
+          // Read DOM lists safely through registry
           candidateSongs = getListOrder('list-candidates');
           set1Main = getListOrder('list-set1-main');
           set1Reserve = getListOrder('list-set1-reserve');
@@ -706,15 +719,7 @@
 
     function getListOrder(containerId) {
       const ids = Array.from(document.getElementById(containerId).children).map(el => el.getAttribute('data-id'));
-      const allPool = [
-        ...candidateSongs,
-        ...set1Main,
-        ...set1Reserve,
-        ...set2Main,
-        ...set2Reserve,
-        ...allSheetSongs
-      ];
-      return ids.map(id => allPool.find(s => s && s.id === id)).filter(Boolean);
+      return ids.map(id => itemRegistry.get(id)).filter(Boolean);
     }
 
     function setReadyFilter(val) {
@@ -893,7 +898,7 @@
 
     function openImportModal() {
       document.getElementById('modal-title').innerText = 'Import Previous Setlist';
-      document.getElementById('modal-desc').innerText = 'Paste the text from an old Word doc, email, or setlist. The app will reconstruct Set 1, Set 2, Reserves, and Cues, matching each song with its sheet metadata!';
+      document.getElementById('modal-desc').innerText = 'Paste text from an old Word doc or setlist. The app reconstructs Set 1, Set 2, Reserves, and Cues matching your sheet!';
       document.getElementById('modal-text').value = '';
       document.getElementById('modal-text').placeholder = "Cotuit Craft Fest. ’26\nSET ONE\nTake the A Train\nSwitch guitars\n...\nSET TWO\nSF Bay Blues\n...\nReserve\nWichita Lineman";
       const btn = document.getElementById('modal-btn');
@@ -954,9 +959,11 @@
           matchedItem = {
             id: 'cue_' + Math.random().toString(36).substr(2, 9),
             title: clean,
+            cleanTitle: clean.toLowerCase().replace(/[^a-z0-9]/g, ''),
             isCue: true,
             duration: '0:00'
           };
+          itemRegistry.set(matchedItem.id, matchedItem);
         } else {
           const needle = clean.toLowerCase().replace(/[^a-z0-9]/g, '');
           const found = allSheetSongs.find(s => s.cleanTitle === needle || s.cleanTitle.includes(needle) || needle.includes(s.cleanTitle));
@@ -977,6 +984,7 @@
               isCue: false
             };
           }
+          itemRegistry.set(matchedItem.id, matchedItem);
         }
 
         if (currentSection === 'SET1') s1.push(matchedItem);
@@ -991,7 +999,7 @@
       set2Reserve = s2Res;
 
       const usedIds = new Set([...set1Main, ...set1Reserve, ...set2Main, ...set2Reserve].map(s => s.id));
-      candidateSongs = [makeSwitchGuitarsCue(), ...allSheetSongs.filter(s => !usedIds.has(s.id))];
+      candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs.filter(s => !usedIds.has(s.id))];
 
       renderAll();
       closeModal();
@@ -1014,6 +1022,8 @@
     function parsePastedText(text) {
       const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       const parsed = [];
+      itemRegistry.clear();
+
       lines.forEach((line, idx) => {
         const cols = line.split('\t').length > 1 ? line.split('\t') : line.split(',');
         const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
@@ -1024,7 +1034,7 @@
         const horns = clean[7] || '';
         const rawDur = clean[10] || '';
         if (title && (ready === 'A' || ready === 'B')) {
-          parsed.push({
+          const song = {
             id: 'pasted_' + idx,
             title: title,
             cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
@@ -1035,12 +1045,14 @@
             duration: formatCardDuration(rawDur),
             rawDuration: rawDur,
             isCue: false
-          });
+          };
+          itemRegistry.set(song.id, song);
+          parsed.push(song);
         }
       });
       if (parsed.length > 0) {
         allSheetSongs = parsed;
-        candidateSongs = [makeSwitchGuitarsCue(), ...allSheetSongs];
+        candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs];
         set1Main = [];
         set1Reserve = [];
         set2Main = [];
