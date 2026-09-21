@@ -30,6 +30,12 @@
       --cue-border: #6d2335;
       --cue-txt: #fda4af;
       --sub-bg: #0d1320;
+
+      /* Genre Title Colors */
+      --genre-jazz: #ffffff;
+      --genre-blues: #7dd3fc;
+      --genre-holiday: #fca5a5;
+      --genre-other: #fef08a;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -217,7 +223,7 @@
       outline: none;
       width: 100%;
     }
-    .chip-group { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
     .chip {
       background: #182235;
       border: 1px solid #283754;
@@ -229,6 +235,7 @@
       cursor: pointer;
     }
     .chip.active { background: var(--cape-periwinkle); color: #0b0f19; border-color: var(--cape-periwinkle); }
+    .chip-holiday.active { background: #b91c1c; color: #fee2e2; border-color: #ef4444; }
 
     .set-column-body {
       flex: 1;
@@ -277,6 +284,7 @@
       background: #090e17;
     }
 
+    /* Song Cards */
     .song-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -294,7 +302,7 @@
       border: 1px dashed var(--cue-border);
     }
     .song-card.card-cue .song-title {
-      color: var(--cue-txt);
+      color: var(--cue-txt) !important;
       font-style: italic;
       font-weight: 600;
     }
@@ -304,17 +312,41 @@
       justify-content: space-between;
       align-items: baseline;
       margin-bottom: 3px;
+      gap: 6px;
     }
+
+    .card-top-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .song-title {
       font-size: 13px;
       font-weight: 700;
-      color: #f8fafc;
+      line-height: 1.25;
     }
+    .title-blues { color: var(--genre-blues); }
+    .title-jazz { color: var(--genre-jazz); }
+    .title-holiday { color: var(--genre-holiday); }
+    .title-other { color: var(--genre-other); }
+
     .song-duration {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       color: #94a3b8;
     }
+
+    .btn-dup {
+      font-size: 12px;
+      color: #64748b;
+      cursor: pointer;
+      padding: 0 3px;
+      line-height: 1;
+      border-radius: 3px;
+      transition: color 0.15s ease;
+    }
+    .btn-dup:hover { color: var(--cape-periwinkle); background: rgba(124, 147, 214, 0.15); }
 
     .card-bottom {
       display: flex;
@@ -384,7 +416,7 @@
         <span class="brand-script">jazz and blues</span>
         <span class="brand-tagline">JAZZ AND BLUES...FOR GREAT PARTIES</span>
       </div>
-      <input type="text" id="gig-title" class="gig-title-input" value="Cotuit Craft Fest. '26 v FINAL">
+      <input type="text" id="gig-title" class="gig-title-input" value="Set List Name">
     </div>
 
     <div class="header-actions">
@@ -410,6 +442,7 @@
           <span class="chip" id="chip-b" onclick="setReadyFilter('B')">Ready B</span>
           <span class="chip" id="chip-bass" onclick="toggleBadgeFilter('bass')">🎸 Phil Bass</span>
           <span class="chip" id="chip-horns" onclick="toggleBadgeFilter('horns')">🎺 Horns</span>
+          <span class="chip chip-holiday" id="chip-holiday" onclick="toggleHolidayFilter()">🎄 Holiday</span>
         </div>
       </div>
       <div id="list-candidates" class="song-list-main" style="flex:1;"></div>
@@ -475,7 +508,6 @@
     const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
     const SHEET_GID = '477864766';
 
-    // MASTER REGISTRY (Prevents any item from ever vanishing)
     const itemRegistry = new Map();
 
     let allSheetSongs = [];
@@ -489,17 +521,49 @@
     let currentReadyFilter = 'ALL';
     let filterBass = false;
     let filterHorns = false;
+    let filterHoliday = false; // Default OFF
+
+    // Matches Col C for Holiday variations
+    function isHolidayGenre(genreStr) {
+      if (!genreStr) return false;
+      const g = genreStr.trim().toLowerCase();
+      return g === 'holiday' || g.includes('holiday') || g.includes('xmas') || g.includes('christmas');
+    }
+
+    function getGenreClass(genreStr) {
+      if (!genreStr) return 'title-other';
+      if (isHolidayGenre(genreStr)) return 'title-holiday';
+      const g = genreStr.toLowerCase();
+      if (g.includes('blues')) return 'title-blues';
+      if (g.includes('jazz')) return 'title-jazz';
+      return 'title-other';
+    }
 
     function createSwitchGuitarsCue() {
       const cue = {
         id: 'cue_' + Math.random().toString(36).substr(2, 9),
         title: 'Switch guitars',
         cleanTitle: 'switchguitars',
+        genre: '',
         isCue: true,
         duration: '0:00'
       };
       itemRegistry.set(cue.id, cue);
       return cue;
+    }
+
+    function duplicateSong(originalId) {
+      const orig = itemRegistry.get(originalId);
+      if (!orig) return;
+
+      const clone = {
+        ...orig,
+        id: orig.id + '_dup_' + Math.random().toString(36).substr(2, 6)
+      };
+
+      itemRegistry.set(clone.id, clone);
+      candidateSongs.unshift(clone);
+      renderAll();
     }
 
     function parseDurationToSeconds(durStr) {
@@ -525,15 +589,91 @@
     }
 
     function resetState() {
-      fetchSheetJsonp();
+      fetchSheetData();
     }
 
+    /* ROBUST CSV FETCHER (Bypasses all Google Sheets UI Filter views completely) */
+    async function fetchSheetData() {
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}&_t=${Date.now()}`;
+      try {
+        const res = await fetch(csvUrl);
+        if (!res.ok) throw new Error('CSV network response was not ok');
+        const csvText = await res.text();
+        parseSheetCsv(csvText);
+      } catch (err) {
+        console.warn('Direct CSV fetch failed (likely CORS on local file), falling back to GViz JSONP:', err);
+        fetchSheetJsonp();
+      }
+    }
+
+    // CSV Splitter that respects quoted strings
+    function parseCsvLine(str) {
+      const result = [];
+      let cur = '';
+      let inQuotes = false;
+      for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (char === '"' || char === '“' || char === '”') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(cur.trim().replace(/^["“]|["”]$/g, ''));
+          cur = '';
+        } else {
+          cur += char;
+        }
+      }
+      result.push(cur.trim().replace(/^["“]|["”]$/g, ''));
+      return result;
+    }
+
+    function parseSheetCsv(csvText) {
+      const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
+      const parsed = [];
+      itemRegistry.clear();
+
+      for (let i = 3; i < lines.length; i++) {
+        const row = parseCsvLine(lines[i]);
+        if (!row || row.length === 0) continue;
+
+        const title = row[0] ? row[0].trim() : '';
+        const genre = row[2] ? row[2].trim() : '';
+        const ready = row[5] ? row[5].trim().toUpperCase() : '';
+        const pBass = row[6] ? row[6].trim() : '';
+        const horns = row[7] ? row[7].trim() : '';
+        const rawDur = row[10] ? row[10].trim() : '';
+
+        const isHol = isHolidayGenre(genre);
+
+        // Accept if title exists and readiness is A/B (or it's a Holiday tune)
+        if (title && (ready === 'A' || ready === 'B' || isHol)) {
+          const song = {
+            id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
+            title: title,
+            cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            genre: genre || (isHol ? 'Holiday' : ''),
+            readiness: ready || 'A',
+            isHoliday: isHol,
+            philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
+            horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
+            duration: formatCardDuration(rawDur),
+            rawDuration: rawDur,
+            isCue: false
+          };
+          itemRegistry.set(song.id, song);
+          parsed.push(song);
+        }
+      }
+
+      applyParsedData(parsed);
+    }
+
+    // JSONP Fallback
     function fetchSheetJsonp() {
       const existing = document.getElementById('gviz-jsonp-script');
       if (existing) existing.remove();
       const script = document.createElement('script');
       script.id = 'gviz-jsonp-script';
-      script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}`;
+      script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}&_t=${Date.now()}`;
       document.body.appendChild(script);
     }
 
@@ -549,18 +689,21 @@
 
         const title = c[0] ? String(c[0].v || '').trim() : '';
         const genre = c[2] ? String(c[2].v || '').trim() : '';
-        const ready = c[5] ? String(c[5].v || '').trim().toUpperCase() : '';
+        let ready = c[5] ? String(c[5].v || '').trim().toUpperCase() : '';
         const pBass = c[6] ? String(c[6].v || '').trim() : '';
         const horns = c[7] ? String(c[7].v || '').trim() : '';
         const rawDur = c[10] ? String(c[10].f || c[10].v || '').trim() : '';
 
-        if (title && (ready === 'A' || ready === 'B')) {
+        const isHol = isHolidayGenre(genre);
+
+        if (title && (ready === 'A' || ready === 'B' || isHol)) {
           const song = {
             id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
             title: title,
             cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            genre: genre,
-            readiness: ready,
+            genre: genre || (isHol ? 'Holiday' : ''),
+            readiness: ready || 'A',
+            isHoliday: isHol,
             philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
             horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
             duration: formatCardDuration(rawDur),
@@ -572,6 +715,10 @@
         }
       }
 
+      applyParsedData(parsed);
+    };
+
+    function applyParsedData(parsed) {
       allSheetSongs = parsed;
       candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs];
       set1Main = [];
@@ -579,7 +726,7 @@
       set2Main = [];
       set2Reserve = [];
       renderAll();
-    };
+    }
 
     function addStageCue(setNum) {
       const cueText = prompt("Enter stage cue (e.g., 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
@@ -588,6 +735,7 @@
         id: 'cue_' + Date.now(),
         title: cueText.trim(),
         cleanTitle: cueText.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        genre: '',
         isCue: true,
         duration: '0:00'
       };
@@ -598,7 +746,6 @@
     }
 
     function renderAll() {
-      // Ensure there is always a "Switch guitars" card ready at top of Candidates
       const hasSwitchInCandidates = candidateSongs.some(s => s.isCue && s.title.toLowerCase().includes('switch guitar'));
       if (!hasSwitchInCandidates) {
         candidateSongs.unshift(createSwitchGuitarsCue());
@@ -619,6 +766,18 @@
 
       const filteredCandidates = candidateSongs.filter(s => {
         if (s.isCue) return true;
+
+        const isHol = isHolidayGenre(s.genre) || s.isHoliday;
+
+        // When Holiday toggle is OFF, suppress Holiday tunes
+        if (!filterHoliday && isHol) return false;
+
+        // When Holiday toggle is ON, show Holiday tunes regardless of Ready A/B selection
+        if (filterHoliday && isHol) {
+          if (q && !s.title.toLowerCase().includes(q) && !s.genre.toLowerCase().includes(q)) return false;
+          return true;
+        }
+
         if (currentReadyFilter !== 'ALL' && s.readiness !== currentReadyFilter) return false;
         if (filterBass && !s.philBass) return false;
         if (filterHorns && !s.horns) return false;
@@ -628,12 +787,12 @@
 
       const songCountOnly = filteredCandidates.filter(s => !s.isCue).length;
       document.getElementById('cand-count').innerText = `${songCountOnly} songs`;
-      filteredCandidates.forEach(s => candEl.appendChild(createCard(s)));
+      filteredCandidates.forEach(s => candEl.appendChild(createCard(s, false)));
 
-      set1Main.forEach(s => s1MainEl.appendChild(createCard(s)));
-      set1Reserve.forEach(s => s1ResEl.appendChild(createCard(s)));
-      set2Main.forEach(s => s2MainEl.appendChild(createCard(s)));
-      set2Reserve.forEach(s => s2ResEl.appendChild(createCard(s)));
+      set1Main.forEach(s => s1MainEl.appendChild(createCard(s, true)));
+      set1Reserve.forEach(s => s1ResEl.appendChild(createCard(s, true)));
+      set2Main.forEach(s => s2MainEl.appendChild(createCard(s, true)));
+      set2Reserve.forEach(s => s2ResEl.appendChild(createCard(s, true)));
 
       updateMeta('set1-meta', set1Main);
       updateMeta('set2-meta', set2Main);
@@ -641,7 +800,7 @@
       document.getElementById('set2-reserve-meta').innerText = `${set2Reserve.filter(s => !s.isCue).length} songs`;
     }
 
-    function createCard(s) {
+    function createCard(s, inSet = false) {
       const card = document.createElement('div');
       card.className = 'song-card' + (s.isCue ? ' card-cue' : '');
       card.setAttribute('data-id', s.id);
@@ -656,10 +815,15 @@
         return card;
       }
 
+      const colorClass = getGenreClass(s.genre);
+
       card.innerHTML = `
         <div class="card-top">
-          <span class="song-title">${s.title}</span>
-          <span class="song-duration">${s.duration}</span>
+          <span class="song-title ${colorClass}">${s.title}</span>
+          <div class="card-top-right">
+            ${inSet ? `<span class="btn-dup" title="Duplicate / Repeat Song" onclick="duplicateSong('${s.id}')">⎘</span>` : ''}
+            <span class="song-duration">${s.duration}</span>
+          </div>
         </div>
         <div class="card-bottom">
           <div class="badges">
@@ -701,7 +865,6 @@
         animation: 150,
         ghostClass: 'sortable-ghost',
         onEnd: function() {
-          // Read DOM lists safely through registry
           candidateSongs = getListOrder('list-candidates');
           set1Main = getListOrder('list-set1-main');
           set1Reserve = getListOrder('list-set1-reserve');
@@ -740,8 +903,14 @@
       renderAll();
     }
 
+    function toggleHolidayFilter() {
+      filterHoliday = !filterHoliday;
+      document.getElementById('chip-holiday').classList.toggle('active', filterHoliday);
+      renderAll();
+    }
+
     function downloadWordDoc() {
-      const gigTitle = document.getElementById('gig-title').value || "Cape Jazz & Blues Setlist";
+      const gigTitle = document.getElementById('gig-title').value || "Set List Name";
 
       let s1Count = 0; let s1Sec = 0;
       set1Main.forEach(i => {
@@ -900,7 +1069,7 @@
       document.getElementById('modal-title').innerText = 'Import Previous Setlist';
       document.getElementById('modal-desc').innerText = 'Paste text from an old Word doc or setlist. The app reconstructs Set 1, Set 2, Reserves, and Cues matching your sheet!';
       document.getElementById('modal-text').value = '';
-      document.getElementById('modal-text').placeholder = "Cotuit Craft Fest. ’26\nSET ONE\nTake the A Train\nSwitch guitars\n...\nSET TWO\nSF Bay Blues\n...\nReserve\nWichita Lineman";
+      document.getElementById('modal-text').placeholder = "Set List Name\nSET ONE\nTake the A Train\nSwitch guitars\n...\nSET TWO\nSF Bay Blues\n...\nReserve\nWichita Lineman";
       const btn = document.getElementById('modal-btn');
       btn.innerText = 'Reconstruct Setlist';
       btn.onclick = parsePreviousSetlistText;
@@ -960,6 +1129,7 @@
             id: 'cue_' + Math.random().toString(36).substr(2, 9),
             title: clean,
             cleanTitle: clean.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            genre: '',
             isCue: true,
             duration: '0:00'
           };
@@ -1029,17 +1199,20 @@
         const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
         const title = clean[0] || '';
         const genre = clean[2] || '';
-        const ready = (clean[5] || '').toUpperCase();
+        let ready = (clean[5] || '').toUpperCase();
         const pBass = clean[6] || '';
         const horns = clean[7] || '';
         const rawDur = clean[10] || '';
-        if (title && (ready === 'A' || ready === 'B')) {
+        const isHol = isHolidayGenre(genre);
+
+        if (title && (ready === 'A' || ready === 'B' || isHol)) {
           const song = {
             id: 'pasted_' + idx,
             title: title,
             cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            genre: genre,
-            readiness: ready,
+            genre: genre || (isHol ? 'Holiday' : ''),
+            readiness: ready || 'A',
+            isHoliday: isHol,
             philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
             horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
             duration: formatCardDuration(rawDur),
@@ -1051,13 +1224,7 @@
         }
       });
       if (parsed.length > 0) {
-        allSheetSongs = parsed;
-        candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs];
-        set1Main = [];
-        set1Reserve = [];
-        set2Main = [];
-        set2Reserve = [];
-        renderAll();
+        applyParsedData(parsed);
       }
     }
 
