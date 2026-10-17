@@ -1,0 +1,140 @@
+/* Color Specs for Song Titles */
+.title-jazz    { color: #ffffff; }
+.title-blues   { color: #7dd3fc; }
+.title-holiday { color: #fca5a5; }
+.title-other   { color: #fef08a; }
+
+/* Holiday highlighting when toggle chip is active */
+body.holiday-highlight .genre-holiday-card {
+  border-color: rgba(248, 113, 113, 0.7) !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+}
+
+/* UI Action Buttons & Chips */
+.btn-action {
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-cue-add {
+  font-size: 0.75rem;
+  background-color: #1e293b;
+  color: #94a3b8;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid #334155;
+  transition: all 0.15s;
+}
+.btn-cue-add:hover {
+  background-color: #334155;
+  color: #f8fafc;
+}
+
+.badge-count {
+  background-color: #1e293b;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid #334155;
+}
+
+.chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.25rem;
+  background-color: #1e293b;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.chip:hover {
+  border-color: #64748b;
+  color: #f1f5f9;
+}
+.chip.active {
+  background-color: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  font-weight: 600;
+}
+.chip-holiday.active {
+  background-color: #b91c1c;
+  border-color: #f87171;
+  color: #ffffff;
+}
+
+/* Draggable Cards */
+.card-song {
+  background-color: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  cursor: grab;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+  user-select: none;
+}
+.card-song:hover {
+  border-color: #334155;
+}
+.card-cue {
+  background-color: #450a0a;
+  border: 1px dashed #ef4444;
+  color: #fca5a5;
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* SortableJS Ghost & Dragging Styles */
+.sortable-ghost {
+  opacity: 0.35;
+  background-color: #0284c7 !important;
+  border: 1px dashed #38bdf8 !important;
+}
+.sortable-drag {
+  cursor: grabbing !important;
+  opacity: 0.95;
+  transform: scale(1.02);
+}
+.card-dropzone {
+  min-height: 48px;
+}
+
+/* Modals */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal-window {
+  background-color: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  width: 90%;
+  max-width: 540px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+/* Scrollbar tuning */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
