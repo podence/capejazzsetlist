@@ -9,8 +9,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SortableJS CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-  <!-- docx library -->
-  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
   
   <!-- Custom Styles -->
   <link rel="stylesheet" href="style.css">
@@ -134,10 +132,10 @@
       </div>
 
       <div class="flex-1 flex flex-col gap-3 overflow-hidden mt-3">
-        <!-- Main Set 1 list -->
-        <div class="flex-1 overflow-y-auto pr-1">
+        <!-- Main Set 1 list: Dropzone flexes to fill available empty space -->
+        <div class="flex-1 overflow-y-auto pr-1 flex flex-col">
           <p class="text-[11px] font-semibold text-slate-400 uppercase mb-1">Active Set</p>
-          <div id="set1-list" class="space-y-2 card-dropzone min-h-[140px]"></div>
+          <div id="set1-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-24"></div>
         </div>
 
         <!-- Set 1 Reserve -->
@@ -159,10 +157,10 @@
       </div>
 
       <div class="flex-1 flex flex-col gap-3 overflow-hidden mt-3">
-        <!-- Main Set 2 list -->
-        <div class="flex-1 overflow-y-auto pr-1">
+        <!-- Main Set 2 list: Dropzone flexes to fill available empty space -->
+        <div class="flex-1 overflow-y-auto pr-1 flex flex-col">
           <p class="text-[11px] font-semibold text-slate-400 uppercase mb-1">Active Set</p>
-          <div id="set2-list" class="space-y-2 card-dropzone min-h-[140px]"></div>
+          <div id="set2-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-24"></div>
         </div>
 
         <!-- Set 2 Reserve -->
