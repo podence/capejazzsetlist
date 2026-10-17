@@ -134,7 +134,6 @@
     }
     .btn:hover { background: #334155; border-color: #475569; }
 
-    /* Dropdown for Download Button */
     .dropdown {
       position: relative;
       display: inline-block;
@@ -152,7 +151,7 @@
       top: 100%;
       margin-top: 4px;
       background-color: #101624;
-      min-width: 210px;
+      min-width: 220px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.5);
       border: 1px solid #23314c;
       border-radius: 8px;
@@ -216,4 +215,1014 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background:
+      background: #0d121e;
+    }
+    .column-header h2 {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #e2e8f0;
+    }
+    .column-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .column-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--cape-periwinkle);
+      background: rgba(124, 147, 214, 0.12);
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+    .btn-cue {
+      font-size: 11px;
+      padding: 3px 7px;
+      background: #24141c;
+      border: 1px solid #54222f;
+      color: #fda4af;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .filter-panel {
+      padding: 10px 14px;
+      border-bottom: 1px solid #1f293d;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #0b0f19;
+    }
+    .search-input {
+      background: #182235;
+      border: 1px solid #283754;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      outline: none;
+      width: 100%;
+    }
+    .chip-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .chip {
+      background: #182235;
+      border: 1px solid #283754;
+      color: #94a3b8;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 14px;
+      cursor: pointer;
+    }
+    .chip.active { background: var(--cape-periwinkle); color: #0b0f19; border-color: var(--cape-periwinkle); }
+    .chip-holiday.active { background: #b91c1c; color: #fee2e2; border-color: #ef4444; }
+
+    .set-column-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .song-list-main {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .reserve-section {
+      background: var(--sub-bg);
+      border-top: 1px solid #1f293d;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      max-height: 180px;
+    }
+    .reserve-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .song-list-reserve {
+      min-height: 48px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      border: 1px dashed #243249;
+      border-radius: 6px;
+      padding: 6px;
+      background: #090e17;
+    }
+
+    .song-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      cursor: grab;
+      user-select: none;
+      transition: all 0.1s ease;
+    }
+    .song-card:hover { border-color: var(--cape-periwinkle); background: #1c273c; }
+    .song-card:active { cursor: grabbing; }
+
+    .song-card.card-cue {
+      background: var(--cue-bg);
+      border: 1px dashed var(--cue-border);
+    }
+    .song-card.card-cue .song-title {
+      color: var(--cue-txt) !important;
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 3px;
+      gap: 6px;
+    }
+
+    .card-top-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .song-title {
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .title-blues { color: var(--genre-blues); }
+    .title-jazz { color: var(--genre-jazz); }
+    .title-holiday { color: var(--genre-holiday); }
+    .title-other { color: var(--genre-other); }
+
+    .song-duration {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
+    .btn-dup {
+      font-size: 12px;
+      color: #64748b;
+      cursor: pointer;
+      padding: 0 3px;
+      line-height: 1;
+      border-radius: 3px;
+      transition: color 0.15s ease;
+    }
+    .btn-dup:hover { color: var(--cape-periwinkle); background: rgba(124, 147, 214, 0.15); }
+
+    .card-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badges { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .badge {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .badge-ready-a { background: var(--ready-a-bg); color: var(--ready-a-txt); }
+    .badge-ready-b { background: var(--ready-b-bg); color: var(--ready-b-txt); }
+    .badge-bass { background: var(--bass-bg); color: var(--bass-txt); }
+    .badge-horns { background: var(--horns-bg); color: var(--horns-txt); }
+    .genre-tag { font-size: 10px; color: #64748b; font-style: italic; }
+
+    .sortable-ghost { opacity: 0.35; background: var(--cape-periwinkle) !important; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-box {
+      background: #101624;
+      border: 1px solid #23314c;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 620px;
+      padding: 22px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+    }
+    .modal-box h3 { margin-bottom: 8px; font-size: 16px; color: #fff; }
+    .modal-box p { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+    .modal-box textarea {
+      width: 100%;
+      height: 250px;
+      background: #182235;
+      color: #f1f5f9;
+      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid #283754;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      resize: none;
+      margin-bottom: 14px;
+    }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand-container">
+      <div class="brand-lockup">
+        <span class="brand-cape">CAPE</span>
+        <span class="brand-script">jazz and blues</span>
+        <span class="brand-tagline">JAZZ AND BLUES...FOR GREAT PARTIES</span>
+      </div>
+      <input type="text" id="gig-title" class="gig-title-input" value="Set List Name">
+    </div>
+
+    <div class="header-actions">
+      <button class="btn" onclick="resetState()">🔄 Reset</button>
+      <button class="btn" onclick="openImportModal()">📥 Import Previous Set</button>
+      <button class="btn" onclick="openPasteModal()">📋 Paste Sheet Data</button>
+      
+      <div class="dropdown">
+        <button class="btn btn-word">📄 Download Word Doc ▾</button>
+        <div class="dropdown-content">
+          <a onclick="downloadWordDoc('plain')">
+            Standard Format
+            <small>Clean black, Aptos 13.5pt</small>
+          </a>
+          <a onclick="downloadWordDoc('geoff')">
+            Geoff's Format
+            <small>Calibri 18pt, blue songs & red times</small>
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- CANDIDATES -->
+    <div class="column">
+      <div class="column-header">
+        <h2>Candidates Pool</h2>
+        <span class="column-meta" id="cand-count">0 songs</span>
+      </div>
+      <div class="filter-panel">
+        <input type="text" id="search-input" class="search-input" placeholder="Search title or genre..." oninput="renderAll()">
+        <div class="chip-group">
+          <span class="chip active" id="chip-all" onclick="setReadyFilter('ALL')">All</span>
+          <span class="chip" id="chip-a" onclick="setReadyFilter('A')">Ready A</span>
+          <span class="chip" id="chip-b" onclick="setReadyFilter('B')">Ready B</span>
+          <span class="chip" id="chip-bass" onclick="toggleBadgeFilter('bass')">🎸 Phil Bass</span>
+          <span class="chip" id="chip-horns" onclick="toggleBadgeFilter('horns')">🎺 Horns</span>
+          <span class="chip chip-holiday" id="chip-holiday" onclick="toggleHolidayFilter()">🎄 Holiday</span>
+        </div>
+      </div>
+      <div id="list-candidates" class="song-list-main" style="flex:1;"></div>
+    </div>
+
+    <!-- SET ONE -->
+    <div class="column">
+      <div class="column-header">
+        <h2>SET ONE</h2>
+        <div class="column-header-right">
+          <button class="btn-cue" onclick="addStageCue(1)">+ Cue</button>
+          <span class="column-meta" id="set1-meta">0 songs • 0 mins</span>
+        </div>
+      </div>
+      <div class="set-column-body">
+        <div id="list-set1-main" class="song-list-main"></div>
+        <div class="reserve-section">
+          <div class="reserve-header">
+            <span>Reserve (Extras)</span>
+            <span id="set1-reserve-meta" style="font-size:10px;color:#7C93D6;">0 songs</span>
+          </div>
+          <div id="list-set1-reserve" class="song-list-reserve"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SET TWO -->
+    <div class="column">
+      <div class="column-header">
+        <h2>SET TWO</h2>
+        <div class="column-header-right">
+          <button class="btn-cue" onclick="addStageCue(2)">+ Cue</button>
+          <span class="column-meta" id="set2-meta">0 songs • 0 mins</span>
+        </div>
+      </div>
+      <div class="set-column-body">
+        <div id="list-set2-main" class="song-list-main"></div>
+        <div class="reserve-section">
+          <div class="reserve-header">
+            <span>Reserve (Extras)</span>
+            <span id="set2-reserve-meta" style="font-size:10px;color:#7C93D6;">0 songs</span>
+          </div>
+          <div id="list-set2-reserve" class="song-list-reserve"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="app-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <h3 id="modal-title">Tool</h3>
+      <p id="modal-desc"></p>
+      <textarea id="modal-text"></textarea>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-word" id="modal-btn">Action</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
+    const SHEET_GID = '477864766';
+
+    // State Master
+    const itemRegistry = new Map();
+    let masterRepertoire = []; // Raw imported list from Google Sheet
+    let duplicatedItems = [];  // User-created duplicates
+
+    let set1MainIds = [];
+    let set1ReserveIds = [];
+    let set2MainIds = [];
+    let set2ReserveIds = [];
+
+    let currentReadyFilter = 'ALL';
+    let filterBass = false;
+    let filterHorns = false;
+    let filterHoliday = false;
+
+    function isHolidayGenre(genreStr) {
+      if (!genreStr) return false;
+      const g = String(genreStr).trim().toLowerCase();
+      return g === 'holiday' || g.includes('holiday') || g.includes('xmas') || g.includes('christmas');
+    }
+
+    function getGenreClass(genreStr) {
+      if (!genreStr) return 'title-other';
+      if (isHolidayGenre(genreStr)) return 'title-holiday';
+      const g = String(genreStr).toLowerCase();
+      if (g.includes('blues')) return 'title-blues';
+      if (g.includes('jazz')) return 'title-jazz';
+      return 'title-other';
+    }
+
+    function createSwitchGuitarsCue() {
+      const cue = {
+        id: 'cue_' + Math.random().toString(36).substr(2, 9),
+        title: 'Switch guitars',
+        cleanTitle: 'switchguitars',
+        genre: '',
+        isCue: true,
+        duration: '0:00',
+        rawDuration: '0:00'
+      };
+      itemRegistry.set(cue.id, cue);
+      return cue;
+    }
+
+    function duplicateSong(originalId) {
+      const orig = itemRegistry.get(originalId);
+      if (!orig) return;
+
+      const clone = {
+        ...orig,
+        id: orig.id + '_dup_' + Math.random().toString(36).substr(2, 6)
+      };
+
+      itemRegistry.set(clone.id, clone);
+      duplicatedItems.unshift(clone);
+      renderAll();
+    }
+
+    function parseDurationToSeconds(durStr) {
+      if (!durStr || String(durStr).trim() === '') return 180;
+      const parts = String(durStr).trim().split(':').map(Number);
+      if (parts.some(isNaN)) return 180;
+
+      if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      if (parts.length === 2) return (parts[0] * 60) + parts[1];
+      if (parts.length === 1) return parts[0] * 60;
+      return 180;
+    }
+
+    function formatCardDuration(durStr) {
+      const totalSec = parseDurationToSeconds(durStr);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    function resetState() {
+      fetchSheetJsonp();
+    }
+
+    function fetchSheetJsonp() {
+      const countEl = document.getElementById('cand-count');
+      if (countEl) countEl.innerText = 'Loading...';
+
+      const existing = document.getElementById('gviz-jsonp-script');
+      if (existing) existing.remove();
+
+      const script = document.createElement('script');
+      script.id = 'gviz-jsonp-script';
+      // Native JSONP prevents any CORS block
+      script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}&tq=select%20*&_nc=${Date.now()}`;
+      script.onerror = function() {
+        if (countEl) countEl.innerText = 'Offline / Error';
+      };
+      document.body.appendChild(script);
+    }
+
+    window.handleGvizResponse = function(response) {
+      try {
+        if (!response || !response.table || !response.table.rows) {
+          document.getElementById('cand-count').innerText = '0 songs';
+          return;
+        }
+
+        const rows = response.table.rows;
+        const parsed = [];
+        itemRegistry.clear();
+        duplicatedItems = [];
+
+        for (let i = 0; i < rows.length; i++) {
+          const c = rows[i].c;
+          if (!c) continue;
+
+          const title = c[0] ? String(c[0].v || '').trim() : '';
+          const genre = c[2] ? String(c[2].v || '').trim() : '';
+          let ready = c[5] ? String(c[5].v || '').trim().toUpperCase() : '';
+          const pBass = c[6] ? String(c[6].v || '').trim() : '';
+          const horns = c[7] ? String(c[7].v || '').trim() : '';
+          const rawDur = c[10] ? String(c[10].f || c[10].v || '').trim() : '';
+
+          const isHol = isHolidayGenre(genre);
+
+          if (title && (ready === 'A' || ready === 'B' || isHol)) {
+            const song = {
+              id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
+              title: title,
+              cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
+              genre: genre || (isHol ? 'Holiday' : ''),
+              readiness: ready || 'A',
+              isHoliday: isHol,
+              philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
+              horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
+              duration: formatCardDuration(rawDur),
+              rawDuration: rawDur,
+              isCue: false
+            };
+            itemRegistry.set(song.id, song);
+            parsed.push(song);
+          }
+        }
+
+        masterRepertoire = parsed;
+        set1MainIds = [];
+        set1ReserveIds = [];
+        set2MainIds = [];
+        set2ReserveIds = [];
+        renderAll();
+      } catch (err) {
+        console.error("Ingestion failed:", err);
+        document.getElementById('cand-count').innerText = 'Error';
+      }
+    };
+
+    function addStageCue(setNum) {
+      const cueText = prompt("Enter stage cue (e.g., 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
+      if (!cueText) return;
+      const cueItem = {
+        id: 'cue_' + Date.now(),
+        title: cueText.trim(),
+        cleanTitle: cueText.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        genre: '',
+        isCue: true,
+        duration: '0:00',
+        rawDuration: '0:00'
+      };
+      itemRegistry.set(cueItem.id, cueItem);
+      if (setNum === 1) set1MainIds.push(cueItem.id);
+      else set2MainIds.push(cueItem.id);
+      renderAll();
+    }
+
+    function removeCue(id) {
+      set1MainIds = set1MainIds.filter(x => x !== id);
+      set1ReserveIds = set1ReserveIds.filter(x => x !== id);
+      set2MainIds = set2MainIds.filter(x => x !== id);
+      set2ReserveIds = set2ReserveIds.filter(x => x !== id);
+      duplicatedItems = duplicatedItems.filter(x => x.id !== id);
+      itemRegistry.delete(id);
+      renderAll();
+    }
+
+    // STATE-FIRST RENDERING
+    function renderAll() {
+      const assignedIds = new Set([
+        ...set1MainIds,
+        ...set1ReserveIds,
+        ...set2MainIds,
+        ...set2ReserveIds
+      ]);
+
+      const pool = [...duplicatedItems, ...masterRepertoire].filter(s => !assignedIds.has(s.id));
+
+      const q = (document.getElementById('search-input').value || '').toLowerCase();
+      const candEl = document.getElementById('list-candidates');
+      const s1MainEl = document.getElementById('list-set1-main');
+      const s1ResEl = document.getElementById('list-set1-reserve');
+      const s2MainEl = document.getElementById('list-set2-main');
+      const s2ResEl = document.getElementById('list-set2-reserve');
+
+      candEl.innerHTML = '';
+      s1MainEl.innerHTML = '';
+      s1ResEl.innerHTML = '';
+      s2MainEl.innerHTML = '';
+      s2ResEl.innerHTML = '';
+
+      // Persistent "Switch guitars" card always available at top of candidates
+      const persistentCue = createSwitchGuitarsCue();
+      candEl.appendChild(createCard(persistentCue, false));
+
+      const filteredCandidates = pool.filter(s => {
+        const isHol = isHolidayGenre(s.genre) || s.isHoliday;
+
+        if (!filterHoliday && isHol) return false;
+
+        if (filterHoliday && isHol) {
+          if (q && !s.title.toLowerCase().includes(q) && !s.genre.toLowerCase().includes(q)) return false;
+          return true;
+        }
+
+        if (currentReadyFilter !== 'ALL' && s.readiness !== currentReadyFilter) return false;
+        if (filterBass && !s.philBass) return false;
+        if (filterHorns && !s.horns) return false;
+        if (q && !s.title.toLowerCase().includes(q) && !s.genre.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      document.getElementById('cand-count').innerText = `${filteredCandidates.length} songs`;
+      filteredCandidates.forEach(s => candEl.appendChild(createCard(s, false)));
+
+      // Render Sets
+      const s1MainItems = set1MainIds.map(id => itemRegistry.get(id)).filter(Boolean);
+      const s1ResItems = set1ReserveIds.map(id => itemRegistry.get(id)).filter(Boolean);
+      const s2MainItems = set2MainIds.map(id => itemRegistry.get(id)).filter(Boolean);
+      const s2ResItems = set2ReserveIds.map(id => itemRegistry.get(id)).filter(Boolean);
+
+      s1MainItems.forEach(s => s1MainEl.appendChild(createCard(s, true)));
+      s1ResItems.forEach(s => s1ResEl.appendChild(createCard(s, true)));
+      s2MainItems.forEach(s => s2MainEl.appendChild(createCard(s, true)));
+      s2ResItems.forEach(s => s2ResEl.appendChild(createCard(s, true)));
+
+      updateMeta('set1-meta', s1MainItems);
+      updateMeta('set2-meta', s2MainItems);
+      document.getElementById('set1-reserve-meta').innerText = `${s1ResItems.filter(s => !s.isCue).length} songs`;
+      document.getElementById('set2-reserve-meta').innerText = `${s2ResItems.filter(s => !s.isCue).length} songs`;
+    }
+
+    function createCard(s, inSet = false) {
+      const card = document.createElement('div');
+      card.className = 'song-card' + (s.isCue ? ' card-cue' : '');
+      card.setAttribute('data-id', s.id);
+
+      if (s.isCue) {
+        card.innerHTML = `
+          <div class="card-top">
+            <span class="song-title">📌 ${s.title}</span>
+            ${inSet ? `<span style="font-size:11px;color:#fda4af;cursor:pointer;" onclick="removeCue('${s.id}')">✕</span>` : ''}
+          </div>
+        `;
+        return card;
+      }
+
+      const colorClass = getGenreClass(s.genre);
+
+      card.innerHTML = `
+        <div class="card-top">
+          <span class="song-title ${colorClass}">${s.title}</span>
+          <div class="card-top-right">
+            ${inSet ? `<span class="btn-dup" title="Duplicate / Repeat Song" onclick="duplicateSong('${s.id}')">⎘</span>` : ''}
+            <span class="song-duration">${s.duration}</span>
+          </div>
+        </div>
+        <div class="card-bottom">
+          <div class="badges">
+            <span class="badge badge-ready-${s.readiness.toLowerCase()}">Ready ${s.readiness}</span>
+            ${s.philBass ? '<span class="badge badge-bass">🎸 Phil Bass</span>' : ''}
+            ${s.horns ? '<span class="badge badge-horns">🎺 Horns</span>' : ''}
+          </div>
+          ${s.genre ? `<span class="genre-tag">${s.genre}</span>` : ''}
+        </div>
+      `;
+      return card;
+    }
+
+    function updateMeta(elId, list) {
+      let totalSec = 0;
+      let count = 0;
+      list.forEach(s => {
+        if (!s.isCue) {
+          count++;
+          totalSec += parseDurationToSeconds(s.rawDuration || s.duration);
+        }
+      });
+      const m = Math.round(totalSec / 60);
+      document.getElementById(elId).innerText = `${count} songs • ${m} mins`;
+    }
+
+    // STATE-FIRST DRAG AND DROP
+    function initDnD() {
+      const opts = {
+        group: 'band-sets',
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        onEnd: function() {
+          // Read DOM solely to capture new arrangement IDs
+          set1MainIds = extractIds('list-set1-main');
+          set1ReserveIds = extractIds('list-set1-reserve');
+          set2MainIds = extractIds('list-set2-main');
+          set2ReserveIds = extractIds('list-set2-reserve');
+          
+          // Re-render purely from master data state
+          renderAll();
+        }
+      };
+
+      new Sortable(document.getElementById('list-candidates'), opts);
+      new Sortable(document.getElementById('list-set1-main'), opts);
+      new Sortable(document.getElementById('list-set1-reserve'), opts);
+      new Sortable(document.getElementById('list-set2-main'), opts);
+      new Sortable(document.getElementById('list-set2-reserve'), opts);
+    }
+
+    function extractIds(containerId) {
+      const el = document.getElementById(containerId);
+      if (!el) return [];
+      return Array.from(el.children).map(node => node.getAttribute('data-id')).filter(Boolean);
+    }
+
+    function setReadyFilter(val) {
+      currentReadyFilter = val;
+      ['all', 'a', 'b'].forEach(k => document.getElementById('chip-' + k).classList.remove('active'));
+      document.getElementById('chip-' + val.toLowerCase()).classList.add('active');
+      renderAll();
+    }
+
+    function toggleBadgeFilter(type) {
+      if (type === 'bass') {
+        filterBass = !filterBass;
+        document.getElementById('chip-bass').classList.toggle('active', filterBass);
+      } else {
+        filterHorns = !filterHorns;
+        document.getElementById('chip-horns').classList.toggle('active', filterHorns);
+      }
+      renderAll();
+    }
+
+    function toggleHolidayFilter() {
+      filterHoliday = !filterHoliday;
+      document.getElementById('chip-holiday').classList.toggle('active', filterHoliday);
+      renderAll();
+    }
+
+    function downloadWordDoc(formatType = 'plain') {
+      const gigTitle = document.getElementById('gig-title').value || "Set List Name";
+      const isGeoff = formatType === 'geoff';
+
+      const s1Main = set1MainIds.map(id => itemRegistry.get(id)).filter(Boolean);
+      const s1Res = set1ReserveIds.map(id => itemRegistry.get(id)).filter(Boolean);
+      const s2Main = set2MainIds.map(id => itemRegistry.get(id)).filter(Boolean);
+      const s2Res = set2ReserveIds.map(id => itemRegistry.get(id)).filter(Boolean);
+
+      let s1Count = 0; let s1Sec = 0;
+      s1Main.forEach(i => {
+        if (!i.isCue) {
+          s1Count++;
+          s1Sec += parseDurationToSeconds(i.rawDuration || i.duration);
+        }
+      });
+      const s1Mins = Math.round(s1Sec / 60);
+
+      let s2Count = 0; let s2Sec = 0;
+      s2Main.forEach(i => {
+        if (!i.isCue) {
+          s2Count++;
+          s2Sec += parseDurationToSeconds(i.rawDuration || i.duration);
+        }
+      });
+      const s2Mins = Math.round(s2Sec / 60);
+
+      function renderSongItem(item) {
+        if (isGeoff) {
+          return `
+            <div class="song-item">
+              <span class="song-title-text">${item.title}</span>
+              <span class="song-duration-text">${item.duration || ''}</span>
+            </div>
+          `;
+        } else {
+          return `<div class="song-item">${item.title}</div>`;
+        }
+      }
+
+      function renderCueItem(item) {
+        return `<div class="cue-item">${item.title}</div>`;
+      }
+
+      let col1Html = `<div class="set-title">SET ONE</div>`;
+      s1Main.forEach(item => {
+        if (item.isCue) col1Html += renderCueItem(item);
+        else col1Html += renderSongItem(item);
+      });
+      col1Html += `<div class="summary-line">${s1Count} songs ${s1Mins} mins.</div>`;
+
+      if (s1Res.length > 0) {
+        col1Html += `<div class="reserve-title">Reserve</div>`;
+        s1Res.forEach(item => {
+          if (item.isCue) col1Html += renderCueItem(item);
+          else col1Html += renderSongItem(item);
+        });
+      }
+
+      let col2Html = `<div class="set-title">SET TWO</div>`;
+      s2Main.forEach(item => {
+        if (item.isCue) col2Html += renderCueItem(item);
+        else col2Html += renderSongItem(item);
+      });
+      col2Html += `<div class="summary-line">${s2Count} Songs – ${s2Mins} mins.</div>`;
+
+      if (s2Res.length > 0) {
+        col2Html += `<div class="reserve-title">Reserve</div>`;
+        s2Res.forEach(item => {
+          if (item.isCue) col2Html += renderCueItem(item);
+          else col2Html += renderSongItem(item);
+        });
+      }
+
+      const styles = isGeoff ? `
+        @page {
+          size: 8.5in 11in;
+          margin: 0.6in 0.6in 0.6in 0.6in;
+        }
+        body {
+          font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
+          font-size: 18pt;
+          line-height: 1.15;
+          color: #000000;
+          margin: 0;
+          padding: 0;
+        }
+        .gig-title {
+          font-size: 22pt;
+          font-weight: bold;
+          color: #c00000;
+          margin-bottom: 12pt;
+        }
+        table.two-col-layout {
+          width: 100%;
+          border-collapse: collapse;
+          border: none;
+        }
+        td.col-set {
+          width: 50%;
+          vertical-align: top;
+          padding-right: 16pt;
+        }
+        td.col-set + td.col-set {
+          padding-right: 0pt;
+          padding-left: 16pt;
+        }
+        .set-title {
+          font-size: 18pt;
+          font-weight: bold;
+          color: #c00000;
+          margin-bottom: 4pt;
+          text-transform: uppercase;
+        }
+        .song-item {
+          font-size: 18pt;
+          margin-top: 1pt;
+          margin-bottom: 1pt;
+        }
+        .song-title-text {
+          font-weight: bold;
+          color: #1f4e78;
+        }
+        .song-duration-text {
+          font-weight: normal;
+          color: #c00000;
+          margin-left: 6pt;
+        }
+        .cue-item {
+          font-size: 18pt;
+          font-style: italic;
+          font-weight: normal;
+          color: #111111;
+          margin-top: 2pt;
+          margin-bottom: 2pt;
+        }
+        .summary-line {
+          font-size: 18pt;
+          font-weight: bold;
+          color: #c00000;
+          margin-top: 6pt;
+          margin-bottom: 14pt;
+        }
+        .reserve-title {
+          font-size: 18pt;
+          font-weight: bold;
+          color: #c00000;
+          margin-top: 10pt;
+          margin-bottom: 3pt;
+        }
+      ` : `
+        @page {
+          size: 8.5in 11in;
+          margin: 0.75in;
+        }
+        body {
+          font-family: 'Aptos', 'Calibri', 'Segoe UI', Arial, sans-serif;
+          font-size: 13.5pt;
+          line-height: 1.25;
+          color: #000000;
+          margin: 0;
+          padding: 0;
+        }
+        .gig-title {
+          font-size: 15pt;
+          font-weight: bold;
+          margin-bottom: 12pt;
+          color: #000000;
+        }
+        table.two-col-layout {
+          width: 100%;
+          border-collapse: collapse;
+          border: none;
+        }
+        td.col-set {
+          width: 50%;
+          vertical-align: top;
+          padding-right: 20pt;
+        }
+        td.col-set + td.col-set {
+          padding-right: 0pt;
+          padding-left: 20pt;
+        }
+        .set-title {
+          font-size: 14pt;
+          font-weight: bold;
+          margin-bottom: 6pt;
+          text-transform: uppercase;
+        }
+        .song-item {
+          margin-top: 1.5pt;
+          margin-bottom: 1.5pt;
+        }
+        .cue-item {
+          margin-top: 3pt;
+          margin-bottom: 3pt;
+          font-style: italic;
+          color: #111111;
+        }
+        .summary-line {
+          font-weight: bold;
+          margin-top: 6pt;
+          margin-bottom: 14pt;
+        }
+        .reserve-title {
+          font-size: 13.5pt;
+          font-weight: bold;
+          margin-top: 10pt;
+          margin-bottom: 3pt;
+        }
+      `;
+
+      const docContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset='utf-8'>
+          <title>${gigTitle}</title>
+          <style>${styles}</style>
+        </head>
+        <body>
+          <div class="gig-title">${gigTitle}</div>
+          <table class="two-col-layout">
+            <tr>
+              <td class="col-set">
+                ${col1Html}
+              </td>
+              <td class="col-set">
+                ${col2Html}
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `;
+
+      const filenameSuffix = isGeoff ? '_Geoff_Format' : '';
+      const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = gigTitle.replace(/[^a-zA-Z0-9_-]/g, '_') + filenameSuffix + '.doc';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function openImportModal() {
+      document.getElementById('modal-title').innerText = 'Import Previous Setlist';
+      document.getElementById('modal-desc').innerText = 'Paste text from an old Word doc or setlist. The app reconstructs Set 1, Set 2, Reserves, and Cues matching your sheet!';
+      document.getElementById('modal-text').value = '';
+      document.getElementById('modal-text').placeholder = "Set List Name\nSET ONE\nTake the A Train\nSwitch guitars\n...\nSET TWO\nSF Bay Blues\n...\nReserve\nWichita Lineman";
+      const btn = document.getElementById('modal-btn');
+      btn.innerText = 'Reconstruct Setlist';
+      btn.onclick = parsePreviousSetlistText;
+      document.getElementById('app-modal').style.display = 'flex';
+    }
+
+    function parsePreviousSetlistText() {
+      const text = document.getElementById('modal-text').value;
+      if (!text.trim()) return;
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      let currentSection = 'HEADER';
+
+      const s1 = [];
+      const s1Res = [];
+      const s2 = [];
+      const s2Res = [];
+
+      lines.forEach(line => {
+        const up = line.toUpperCase();
+        
+        if (up.includes('SET ONE') || up === 'SET 1') {
+          currentSection = 'SET1';
+          return;
+        }
+        if (up.includes('SET TWO') || up === 'SET 2') {
+          currentSection = 'SET2';
+          return;
+        }
+        if (up === 'RESERVE' || up.startsWith('RESERVE')) {
+          if (currentSection === 'SET1' || currentSection === 'SET1_RES') currentSection = 'SET1_RES';
+          else currentSection = 'SET2_RES';
+          return;
+        }
+
+        if (line.match(/\d+\s+songs/i) || line.match(/\d+\s+mins/i)) return;
+
+        if (currentSection === 'HEADER') {
+          document.getElementById('gig-title').value = line;
+          return;
+        }
+
+        const clean = line.replace(/^\d+[\.\)]\s*/, '').trim();
+        if (!clean) return;
+
+        const isKnownCue = clean.toLowerCase().includes('switch guitar') || 
+                           clean.toLowerCase().includes('acoustic guitar') || 
+                           clean.toLowerCase().includes('break') || 
+                           clean.toLowerCase().startsWith('tune');
+
+        let matchedItem = null;
+
+        if (isKnownCue) {
+          matchedItem = {
+            id: 'cue_' + Math.random().toString(36).substr(2, 9),
+            title: clean,
+            cleanTitle: clean.toLowerCase().replace(/[^a-z0-9]/g, ''),
+            genre: '',
+            isCue: true,
+            duration: '0:00',
+            rawDuration: '0:00'
+          };
+          itemRegistry.set(matchedItem.
