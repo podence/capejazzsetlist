@@ -18,14 +18,12 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 (function () {
   'use strict';
 
-  // SPREADSHEET CONFIG
   const CONFIG = {
     SPREADSHEET_ID: '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo',
     SHEET_GID: '477864766',
     SKIP_ROWS: 3
   };
 
-  // APPLICATION STATE
   const state = {
     masterList: [],         // Pristine backup of all fetched songs
     pool: [],               // Currently remaining candidate pool
@@ -37,7 +35,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     includeHoliday: false   // Holiday modifier: false = excluded; true = included
   };
 
-  // PARSERS & HELPERS
   function parseDurationToSec(rawVal, formattedVal) {
     let str = (formattedVal || rawVal || '').toString().trim();
     if (!str) return 0;
@@ -47,13 +44,11 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 
     const parts = str.split(':').map(p => parseInt(p, 10) || 0);
 
-    // Format "0:02:40"
     if (parts.length === 3) {
       const [h, m, s] = parts;
       if (h === 0) return (m * 60) + s;
       return (h * 3600) + (m * 60) + s;
     }
-    // Format "2:40"
     if (parts.length === 2) {
       return (parts[0] * 60) + parts[1];
     }
@@ -77,7 +72,8 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     return str === 'Y' || str === 'YES' || str === 'W' || str === '1' || str === 'TRUE';
   }
 
-  function getGenreClass(genre = '') {
+  function getGenreClass(genre = '', isHoliday = false) {
+    if (isHoliday) return 'title-holiday';
     const g = String(genre).toLowerCase();
     if (g.includes('holiday') || g.includes('christmas') || g.includes('xmas')) return 'title-holiday';
     if (g.includes('jazz')) return 'title-jazz';
@@ -89,10 +85,11 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     if (!Array.isArray(flatCells)) return null;
 
     const title = flatCells[0] ? String(flatCells[0]).trim() : '';
+    // Must have a valid title and not be a repeat header row
     if (!title || title.toLowerCase() === 'tune') return null;
 
     const genre = flatCells[2] ? String(flatCells[2]).trim() : 'Other';
-    const readiness = flatCells[5] ? String(flatCells[5]).trim().toUpperCase() : 'B';
+    const readinessRaw = flatCells[5] ? String(flatCells[5]).trim().toUpperCase() : '';
     const philBassVal = flatCells[6] || '';
     const hornsVal = flatCells[7] || '';
 
@@ -100,17 +97,25 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     const durFormatted = rawCells && rawCells[10] ? (rawCells[10].f || rawCells[10].v) : '';
     const durationSec = parseDurationToSec(durRaw, durFormatted);
 
-    const isHoliday = /holiday|christmas|xmas/i.test(genre);
-    const isReady = (readiness === 'A' || readiness === 'B');
+    // Identify Holiday tunes across Genre, Title, or special notes
+    const isHoliday = /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty/i.test(genre) ||
+                      /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty/i.test(title);
 
-    // Filter rule: Ready A/B OR Holiday tunes
-    if (!isReady && !isHoliday) return null;
+    // Strict Readiness verification: Must be explicitly 'A' or 'B'
+    const isStrictReady = (readinessRaw === 'A' || readinessRaw === 'B');
+
+    // Rule:
+    // 1. Regular tunes MUST have Readiness strictly 'A' or 'B' (blank readiness rejected).
+    // 2. Holiday tunes are imported whether Readiness is A, B, or holiday-tagged.
+    if (!isStrictReady && !isHoliday) {
+      return null;
+    }
 
     return {
       id: 'song_' + Math.random().toString(36).substring(2, 9),
       title: title,
       genre: genre,
-      readiness: readiness || 'B',
+      readiness: isStrictReady ? readinessRaw : (readinessRaw || 'H'),
       philBass: isTrueFlag(philBassVal),
       horns: isTrueFlag(hornsVal),
       durationSec: durationSec,
@@ -119,7 +124,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     };
   }
 
-  // DATA FETCHING: GViz JSONP
   function fetchGoogleSheetData() {
     return new Promise((resolve, reject) => {
       const callbackName = 'gvizCallback_' + Math.floor(Math.random() * 1000000);
@@ -160,7 +164,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     });
   }
 
-  // CARD COMPONENT
   function createCardElement(item, listKey) {
     const card = document.createElement('div');
     card.dataset.id = item.id;
@@ -169,8 +172,8 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     if (item.isCue) {
       card.className = 'card-song card-cue flex items-center justify-between text-xs';
       card.innerHTML = `
-        <span class="truncate">🚩 ${escapeHtml(item.title || '+ Stage Cue')}</span>
-        <div class="flex items-center gap-1.5 ml-2">
+        <span class="truncate pointer-events-none">🚩 ${escapeHtml(item.title || '+ Stage Cue')}</span>
+        <div class="flex items-center gap-1.5 ml-2 pointer-events-auto">
           ${listKey !== 'pool' ? `<button title="Duplicate" class="btn-dup text-xs opacity-70 hover:opacity-100">⎘</button>` : ''}
           <button title="Remove" class="btn-remove text-xs text-rose-400 hover:text-rose-200">✕</button>
         </div>
@@ -178,21 +181,21 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       return card;
     }
 
-    const titleColorClass = getGenreClass(item.genre);
+    const titleColorClass = getGenreClass(item.genre, item.isHoliday);
     const formattedTime = item.durationSec > 0 ? formatSecToMMSS(item.durationSec) : '--:--';
 
     card.className = `card-song flex items-center justify-between text-xs ${item.isHoliday ? 'genre-holiday-card' : ''}`;
     card.innerHTML = `
-      <div class="min-w-0 pr-2">
+      <div class="min-w-0 pr-2 pointer-events-none">
         <p class="font-medium text-sm truncate ${titleColorClass}">${escapeHtml(item.title || 'Untitled')}</p>
         <div class="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-          <span class="font-semibold text-slate-300">[${escapeHtml(item.readiness || 'B')}]</span>
+          <span class="font-semibold text-slate-300">[${escapeHtml(item.readiness || '-')}]</span>
           <span>${formattedTime}</span>
           ${item.philBass ? '<span class="text-amber-400 font-bold bg-amber-950/70 border border-amber-600/50 px-1 rounded text-[10px]" title="Phil on Bass">P</span>' : ''}
           ${item.horns ? '<span class="text-emerald-400 font-bold bg-emerald-950/70 border border-emerald-600/50 px-1 rounded text-[10px]" title="Horns">H</span>' : ''}
         </div>
       </div>
-      <div class="flex items-center gap-1.5 flex-shrink-0">
+      <div class="flex items-center gap-1.5 flex-shrink-0 pointer-events-auto">
         ${listKey !== 'pool' ? `<button title="Duplicate" class="btn-dup text-xs text-slate-400 hover:text-slate-100">⎘</button>` : ''}
         <button title="Remove" class="btn-remove text-xs text-slate-500 hover:text-rose-400">✕</button>
       </div>
@@ -211,7 +214,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     }[tag] || tag));
   }
 
-  // STATE-FIRST RENDERING
   function renderAll() {
     renderPool();
     renderSetColumn('set1', 'set1-list', 'set1-count', 'set1-time');
@@ -227,14 +229,13 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 
     poolContainer.innerHTML = '';
 
-    // CORE HOLIDAY LOGIC:
-    // If includeHoliday is FALSE, holiday songs are completely excluded.
-    // If includeHoliday is TRUE, holiday songs are included and participate in base category filtering.
     const filtered = state.pool.filter(item => {
-      if (!state.includeHoliday && item.isHoliday) {
+      // 1. Holiday Exclusion / Inclusion Filter
+      if (item.isHoliday && !state.includeHoliday) {
         return false;
       }
 
+      // 2. Base Category Filters
       if (state.activeCategory === 'readyA') return item.readiness === 'A';
       if (state.activeCategory === 'readyB') return item.readiness === 'B';
       if (state.activeCategory === 'phil') return Boolean(item.philBass);
@@ -277,7 +278,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     }
   }
 
-  // STATE MUTATIONS
   function moveItemState(itemId, fromListKey, toListKey, newIndex) {
     const sourceArr = state[fromListKey];
     const targetArr = state[toListKey];
@@ -323,7 +323,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
   function resetAll() {
     if (!confirm("Reset all sets back to the candidate pool?")) return;
     
-    // Return all items back into pool from the master list
     state.pool = JSON.parse(JSON.stringify(state.masterList));
     state.set1 = [];
     state.set1_res = [];
@@ -336,7 +335,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     renderAll();
   }
 
-  // DRAG & DROP INITIALIZATION
   function initSortableContainers() {
     const listMap = [
       { id: 'pool-list', key: 'pool' },
@@ -355,6 +353,8 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
         animation: 150,
         ghostClass: 'sortable-ghost',
         dragClass: 'sortable-drag',
+        fallbackOnBody: true,
+        swapThreshold: 0.65,
         onEnd: function (evt) {
           const itemEl = evt.item;
           const fromKey = evt.from.dataset.list || key;
@@ -389,7 +389,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     });
   }
 
-  // CARD EVENTS
   document.addEventListener('click', function (e) {
     const removeBtn = e.target.closest('.btn-remove');
     if (removeBtn) {
@@ -406,9 +405,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     }
   });
 
-  // FILTER CONTROLS
   function initFilterChips() {
-    // Category chips (exclusive radio behavior)
     const categoryChips = document.querySelectorAll('.chip[data-filter]');
     categoryChips.forEach(chip => {
       chip.addEventListener('click', () => {
@@ -419,7 +416,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       });
     });
 
-    // Holiday toggle modifier (independent toggle button)
     const holidayBtn = document.getElementById('btn-holiday-toggle');
     if (holidayBtn) {
       holidayBtn.addEventListener('click', () => {
@@ -431,12 +427,10 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     }
   }
 
-  // MODALS & BUTTONS
   function initModals() {
     const resetBtn = document.getElementById('btn-reset');
     if (resetBtn) resetBtn.onclick = resetAll;
 
-    // Paste TSV Modal
     const pasteModal = document.getElementById('paste-modal');
     document.getElementById('btn-open-paste-modal').onclick = () => pasteModal.classList.remove('hidden');
     document.getElementById('btn-close-paste').onclick = () => pasteModal.classList.add('hidden');
@@ -459,7 +453,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       document.getElementById('paste-textarea').value = '';
     };
 
-    // Import Text Modal
     const importModal = document.getElementById('import-modal');
     document.getElementById('btn-open-import-modal').onclick = () => importModal.classList.remove('hidden');
     document.getElementById('btn-close-import').onclick = () => importModal.classList.add('hidden');
@@ -470,7 +463,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       document.getElementById('import-textarea').value = '';
     };
 
-    // Export Dropdown
     const exportBtn = document.getElementById('btn-export-dropdown');
     const exportMenu = document.getElementById('export-menu');
     exportBtn.onclick = (e) => {
@@ -479,10 +471,9 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     };
     document.addEventListener('click', () => exportMenu.classList.add('hidden'));
 
-    document.getElementById('btn-export-standard').onclick = () => exportDocx('standard');
-    document.getElementById('btn-export-geoff').onclick = () => exportDocx('geoff');
+    document.getElementById('btn-export-standard').onclick = () => exportWordDoc('standard');
+    document.getElementById('btn-export-geoff').onclick = () => exportWordDoc('geoff');
 
-    // Sync Sheet
     document.getElementById('btn-reload-sheet').onclick = loadRemoteSheet;
   }
 
@@ -505,15 +496,16 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
         const [matched] = state.pool.splice(poolIdx, 1);
         state[currentTarget].push(matched);
       } else {
+        const isHoliday = /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty/i.test(cleanTitle);
         state[currentTarget].push({
           id: 'manual_' + Math.random().toString(36).substring(2, 9),
           title: cleanTitle,
           readiness: 'B',
-          genre: 'Other',
+          genre: isHoliday ? 'Holiday' : 'Other',
           durationSec: 0,
           philBass: false,
           horns: false,
-          isHoliday: /holiday|christmas|xmas/i.test(cleanTitle),
+          isHoliday: isHoliday,
           isCue: cleanTitle.startsWith('+') || /cue|switch/i.test(cleanTitle)
         });
       }
@@ -522,125 +514,65 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     renderAll();
   }
 
-  // WORD DOC EXPORT (Defensive library resolution)
-  async function exportDocx(format) {
-    try {
-      const docxLib = window.docx;
-      if (!docxLib || !docxLib.Document) {
-        alert("The docx export library could not be reached. Please check your internet connection.");
-        return;
-      }
+  function exportWordDoc(format) {
+    const gigTitle = document.getElementById('gig-title').value.trim() || 'Setlist';
+    const isGeoff = (format === 'geoff');
 
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = docxLib;
-      const gigTitle = document.getElementById('gig-title').value.trim() || 'Setlist';
-      const isGeoff = (format === 'geoff');
-      const fontName = isGeoff ? 'Calibri' : 'Aptos';
-
-      function createSetSection(title, items, isReserve = false) {
-        const paragraphs = [];
-        
-        paragraphs.push(new Paragraph({
-          text: title.toUpperCase(),
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 240, after: 120 },
-          children: [
-            new TextRun({
-              text: title.toUpperCase(),
-              bold: true,
-              font: fontName,
-              size: isGeoff ? 36 : 28,
-              color: isGeoff ? 'DC2626' : '0284C7'
-            })
-          ]
-        }));
-
-        items.forEach((item, index) => {
-          if (item.isCue) {
-            paragraphs.push(new Paragraph({
-              spacing: { before: 60, after: 60 },
-              children: [
-                new TextRun({
-                  text: `    🚩 ${item.title}`,
-                  italics: true,
-                  bold: isGeoff,
-                  font: fontName,
-                  size: isGeoff ? 36 : 24,
-                  color: isGeoff ? 'DC2626' : '64748B'
-                })
-              ]
-            }));
+    function renderSectionHTML(title, items, isReserve = false) {
+      if (!items || items.length === 0) return '';
+      
+      let html = `<h2 style="${isGeoff ? 'font-family:Calibri; font-size:18pt; color:#DC2626; font-weight:bold; margin-top:20pt; margin-bottom:6pt;' : 'font-family:Aptos, sans-serif; font-size:14pt; color:#0284C7; font-weight:bold; margin-top:16pt; margin-bottom:6pt;'}">${title.toUpperCase()}</h2>`;
+      
+      items.forEach((item, index) => {
+        if (item.isCue) {
+          html += `<p style="${isGeoff ? 'font-family:Calibri; font-size:18pt; color:#DC2626; font-style:italic; font-weight:bold; margin:4pt 0 4pt 18pt;' : 'font-family:Aptos, sans-serif; font-size:12pt; color:#64748B; font-style:italic; margin:3pt 0 3pt 14pt;'}">🚩 ${escapeHtml(item.title)}</p>`;
+        } else {
+          const num = isReserve ? '• ' : `${index + 1}. `;
+          const dur = item.durationSec ? ` <span style="color:#DC2626; font-weight:normal;">(${formatSecToMMSS(item.durationSec)})</span>` : '';
+          
+          if (isGeoff) {
+            html += `<p style="font-family:Calibri; font-size:18pt; color:#1D4ED8; font-weight:bold; margin:4pt 0;">${num}${escapeHtml(item.title)}${dur}</p>`;
           } else {
-            const num = isReserve ? '• ' : `${index + 1}. `;
-            const dur = item.durationSec ? ` (${formatSecToMMSS(item.durationSec)})` : '';
-            
-            paragraphs.push(new Paragraph({
-              spacing: { before: 80, after: 80 },
-              children: [
-                new TextRun({
-                  text: num + item.title,
-                  bold: isGeoff,
-                  font: fontName,
-                  size: isGeoff ? 36 : 27,
-                  color: isGeoff ? '1D4ED8' : '0F172A'
-                }),
-                new TextRun({
-                  text: dur,
-                  bold: false,
-                  font: fontName,
-                  size: isGeoff ? 36 : 24,
-                  color: isGeoff ? 'DC2626' : '64748B'
-                })
-              ]
-            }));
+            html += `<p style="font-family:Aptos, sans-serif; font-size:13.5pt; color:#0F172A; margin:3pt 0;">${num}<strong>${escapeHtml(item.title)}</strong>${item.durationSec ? ` <span style="color:#64748B;">(${formatSecToMMSS(item.durationSec)})</span>` : ''}</p>`;
           }
-        });
-
-        return paragraphs;
-      }
-
-      const docChildren = [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 300 },
-          children: [
-            new TextRun({
-              text: gigTitle,
-              bold: true,
-              font: fontName,
-              size: isGeoff ? 44 : 36,
-              color: isGeoff ? 'DC2626' : '0F172A'
-            })
-          ]
-        }),
-        ...createSetSection('SET ONE', state.set1),
-        ...createSetSection('SET ONE RESERVE', state.set1_res, true),
-        ...createSetSection('SET TWO', state.set2),
-        ...createSetSection('SET TWO RESERVE', state.set2_res, true)
-      ];
-
-      const doc = new Document({
-        sections: [{
-          properties: {},
-          children: docChildren
-        }]
+        }
       });
-
-      const blob = await Packer.toBlob(doc);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${gigTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${format}.docx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) {
-      alert("Error generating Word doc: " + err.message);
-      console.error(err);
+      return html;
     }
+
+    const docContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>${escapeHtml(gigTitle)}</title>
+        <style>
+          @page { size: 8.5in 11in; margin: 0.8in; }
+          body { font-family: ${isGeoff ? 'Calibri' : 'Aptos, sans-serif'}; }
+        </style>
+      </head>
+      <body>
+        <h1 style="text-align:center; ${isGeoff ? 'font-family:Calibri; font-size:22pt; color:#DC2626; font-weight:bold;' : 'font-family:Aptos, sans-serif; font-size:18pt; color:#0F172A; font-weight:bold;'} margin-bottom:18pt;">
+          ${escapeHtml(gigTitle)}
+        </h1>
+        ${renderSectionHTML('SET ONE', state.set1)}
+        ${renderSectionHTML('SET ONE RESERVE', state.set1_res, true)}
+        ${renderSectionHTML('SET TWO', state.set2)}
+        ${renderSectionHTML('SET TWO RESERVE', state.set2_res, true)}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = url;
+    downloadAnchor.download = `${gigTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${format}.doc`;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    document.body.removeChild(downloadAnchor);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  // PUBLIC CUE HELPER
   window.app = {
     addCustomCue(targetKey) {
       const cueText = prompt('Enter custom cue text:', 'Switch guitars');
@@ -655,7 +587,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     }
   };
 
-  // INITIALIZATION
   async function loadRemoteSheet() {
     try {
       const items = await fetchGoogleSheetData();
