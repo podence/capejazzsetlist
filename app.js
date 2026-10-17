@@ -148,8 +148,7 @@ function renderPool() {
   const visibleSongs = allSongs.filter(song => {
     if (assignedIds.has(song.id)) return false;
 
-    // Holiday filter logic:
-    // Hidden by default. If showHoliday is true, they show up alongside regular songs.
+    // Holiday filter logic
     if (song.isHoliday && !showHoliday) return false;
 
     // Category / Readiness filters
@@ -234,7 +233,6 @@ function initSortable() {
       chosenClass: 'bg-slate-800',
       onEnd: () => {
         updateSetStats();
-        // Update candidate counter badge
         const poolCount = document.getElementById('pool-count');
         const poolList = document.getElementById('pool-list');
         if (poolCount && poolList) {
@@ -367,32 +365,107 @@ function setupEventListeners() {
   }
 }
 
-// 10. Word Document Generation (Unnumbered format)
+// 10. Word Document Generation
 function exportWordDoc(format = 'standard') {
   const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
+
+  const getSetStatsData = (containerId) => {
+    const container = document.getElementById(containerId);
+    if (!container) return { count: 0, mins: 0 };
+    const cards = container.querySelectorAll('.song-card');
+    let totalSec = 0;
+    let songCount = 0;
+
+    cards.forEach(c => {
+      if (c.getAttribute('data-cue') === 'true') return;
+      songCount++;
+      const durStr = c.getAttribute('data-duration') || '3:00';
+      const parts = durStr.split(':').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        totalSec += (parts[0] * 60) + parts[1];
+      } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        totalSec += (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      } else {
+        totalSec += 180;
+      }
+    });
+
+    return {
+      count: songCount,
+      mins: Math.round(totalSec / 60)
+    };
+  };
 
   const buildSetHtml = (listId, resId, label) => {
     const mainCards = document.querySelectorAll(`#${listId} .song-card`);
     const resCards = document.querySelectorAll(`#${resId} .song-card`);
     if (mainCards.length === 0 && resCards.length === 0) return '';
 
-    let html = `<div style="font-size: 14pt; font-weight: bold; margin-bottom: 6pt; text-transform: uppercase; ${format === 'geoff' ? 'color:#DC2626; font-size:22pt;' : 'color:#000;'}">${label}</div>`;
+    const stats = getSetStatsData(listId);
 
+    // Header styling: Black, 18pt font, underlined for Geoff
+    const headerStyle = format === 'geoff'
+      ? 'color: #000000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 6pt; text-transform: uppercase;'
+      : 'color: #000000; font-size: 14pt; font-weight: bold; text-transform: uppercase; margin-bottom: 6pt;';
+
+    let html = `<div style="${headerStyle}">${label}</div>`;
+
+    // Song & cue styling
     mainCards.forEach(c => {
       const isCue = c.getAttribute('data-cue') === 'true';
       const title = c.getAttribute('data-title') || c.innerText.trim();
+
       if (isCue) {
-        html += `<div style="font-style:italic; margin: 3pt 0; color:#555;">${escapeHtml(title)}</div>`;
+        if (format === 'geoff') {
+          // Blue and underlined cue/break
+          html += `<div style="color: #1F4E79; text-decoration: underline; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        } else {
+          html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        }
       } else {
-        html += `<div style="margin: 2pt 0; ${format === 'geoff' ? 'color:#1D4ED8; font-weight:bold; font-size:18pt;' : 'color:#000;'}">${escapeHtml(title)}</div>`;
+        if (format === 'geoff') {
+          // Grayish-blue, non-bold for Geoff's format
+          html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        } else {
+          html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        }
       }
     });
 
+    // Total at bottom of each active set
+    if (stats.count > 0) {
+      if (format === 'geoff') {
+        html += `<div style="color: #C00000; font-size: 15pt; font-weight: bold; margin-top: 8pt; margin-bottom: 8pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+      } else {
+        html += `<div style="color: #000000; font-size: 13.5pt; margin-top: 6pt; margin-bottom: 6pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+      }
+    }
+
+    // Reserve Section
     if (resCards.length > 0) {
-      html += `<div style="font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt; color:#444;">Reserve</div>`;
+      const resHeaderStyle = format === 'geoff'
+        ? 'color: #C00000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-top: 10pt; margin-bottom: 4pt;'
+        : 'color: #000000; font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt;';
+
+      html += `<div style="${resHeaderStyle}">Reserve</div>`;
+
       resCards.forEach(c => {
+        const isCue = c.getAttribute('data-cue') === 'true';
         const title = c.getAttribute('data-title') || c.innerText.trim();
-        html += `<div style="margin: 2pt 0; ${format === 'geoff' ? 'color:#1D4ED8; font-weight:bold;' : 'color:#000;'}">${escapeHtml(title)}</div>`;
+
+        if (isCue) {
+          if (format === 'geoff') {
+            html += `<div style="color: #1F4E79; text-decoration: underline; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          } else {
+            html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          }
+        } else {
+          if (format === 'geoff') {
+            html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          } else {
+            html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          }
+        }
       });
     }
 
@@ -402,6 +475,11 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
+  // Centered, red with shadow for Geoff's format
+  const titleStyle = format === 'geoff'
+    ? 'color: #C00000; font-size: 26pt; font-weight: bold; text-align: center; margin-bottom: 16pt; text-shadow: 2px 2px 3px rgba(0,0,0,0.35);'
+    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
+
   const docContent = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
@@ -409,15 +487,14 @@ function exportWordDoc(format = 'standard') {
       <title>${escapeHtml(gigTitle)}</title>
       <style>
         @page { size: 8.5in 11in; margin: 0.75in; }
-        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; font-size: 13.5pt; color: #000; }
-        .title { font-size: 16pt; font-weight: bold; margin-bottom: 14pt; }
+        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
         table { width: 100%; border-collapse: collapse; }
         td { width: 50%; vertical-align: top; padding-right: 20pt; }
         td + td { padding-right: 0; padding-left: 20pt; }
       </style>
     </head>
     <body>
-      <div class="title">${escapeHtml(gigTitle)}</div>
+      <div style="${titleStyle}">${escapeHtml(gigTitle)}</div>
       <table><tr><td>${col1Html}</td><td>${col2Html}</td></tr></table>
     </body>
     </html>
