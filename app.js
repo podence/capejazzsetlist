@@ -1,107 +1,81 @@
-/**
- * Cape Jazz & Blues Setlist Builder
- * Repository: podence/capejazzsetlist
- * app.js - Modular Data Ingestion, UI Filtering, Board Management & Export
- */
-
-// --- CONFIGURATION ---
-const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
-const SHEET_GID = '477864766';
-
-// State Management
-let allTracks = [];
-let activeFilters = {
-  readyA: false,
-  readyB: false,
-  horns: false,
-  pbass: false,
-  showHoliday: false,
-  search: ''
-};
-
-// --- INITIALIZATION ---
-document.addEventListener('DOMContentLoaded', () => {
-  setDefaultTitle();
-  initSortable();
-  setupEventListeners();
-  loadSheetData();
-});
-
-// Sets default gig title to "Set List M/D/YY" (e.g. Set List 10/17/26)
-function setDefaultTitle() {
-  const titleInput = document.getElementById('setlist-title');
-  if (!titleInput) return;
-  const now = new Date();
-  const m = now.getMonth() + 1;
-  const d = now.getDate();
-  const yy = String(now.getFullYear()).slice(-2);
-  titleInput.value = `Set List ${m}/${d}/${yy}`;
-}
-
-// --- DATA INGESTION (GViz JSONP) ---
-function loadSheetData() {
-  const callbackName = 'handleGVizData_' + Math.floor(Math.random() * 100000);
-  
-  window[callbackName] = (data) => {
-    try {
-      parseGVizPayload(data);
-    } catch (err) {
-      console.error('Error parsing Google Sheets data:', err);
-    } finally {
-      delete window[callbackName];
-      if (script && script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    }
-  };
-
-  const script = document.createElement('script');
-  script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:${callbackName}&gid=${SHEET_GID}`;
-  script.onerror = () => {
-    console.error('Failed to load Google Sheet via GViz.');
-    const pool = document.getElementById('candidate-pool');
-    if (pool) {
-      pool.innerHTML = '<div class="p-4 text-rose-400 font-medium">Unable to connect to Google Sheet data source. Verify sheet permissions and connection.</div>';
-    }
-  };
-  document.body.appendChild(script);
-}
-
 function parseGVizPayload(gvizData) {
-  if (!gvizData || !gvizData.table || !gvizData.table.rows) {
-    console.error('Malformed GViz data payload', gvizData);
+  if (!gvizData || !gvizData.table) {
+    console.error('Malformed GViz data payload:', gvizData);
     return;
   }
 
-  const rows = gvizData.table.rows;
+  const table = gvizData.table;
+  const cols = table.cols || [];
+  const rows = table.rows || [];
+
+  console.log(`GViz loaded: ${cols.length} columns, ${rows.length} rows.`);
+
+  // Resolve column indexes dynamically by label/header, with numeric fallbacks
+  const findColIndex = (regex, fallbackIndex) => {
+    const idx = cols.findIndex(col => col && col.label && regex.test(col.label.trim()));
+    return idx !== -1 ? idx : fallbackIndex;
+  };
+
+  const colIdx = {
+    tune: findColIndex(/tune|title|song/i, 0),         // Col A
+    orig: findColIndex(/orig/i, 1),                    // Col B
+    wrkOn: findColIndex(/wrk\s*on/i, 2),               // Col C
+    genre: findColIndex(/genre/i, 3),                  // Col D
+    ready: findColIndex(/ready/i, 5),                  // Col F
+    pBass: findColIndex(/p\s*bass|phil/i, 6),           // Col G
+    horns: findColIndex(/horns?/i, 7),                 // Col H
+    estTime: findColIndex(/est\s*time|time|duration/i, 13) // Col N
+  };
+
+  console.log('Resolved column mapping:', colIdx);
+
   allTracks = [];
 
-  rows.forEach((row, index) => {
+  rows.forEach((row, rowIndex) => {
     const c = row.c || [];
-    const getVal = (idx) => (c[idx] && c[idx].v !== null && c[idx].v !== undefined) ? String(c[idx].v).trim() : '';
 
-    const tune = getVal(0);                // Col A (0): Tune
-    const orig = getVal(1);                // Col B (1): Orig
-    const wrkOn = getVal(2);               // Col C (2): wrk on
-    const genre = getVal(3);               // Col D (3): Genre
-    // Col E (4): Rating (Ignored)
-    const ready = getVal(5).toUpperCase(); // Col F (5): Ready
-    const pBass = getVal(6);               // Col G (6): P Bass
-    const horns = getVal(7);               // Col H (7): Horns
-    const estTime = getVal(13);            // Col N (13): Est Time
+    // Safe cell extraction handling nulls, numbers, booleans, and formatted values
+    const getVal = (idx) => {
+      if (!c[idx]) return '';
+      if (c[idx].f !== undefined && c[idx].f !== null) return String(c[idx].f).trim();
+      if (c[idx].v !== undefined && c[idx].v !== null) return String(c[idx].v).trim();
+      return '';
+    };
 
-    // STRICT INGESTION RULE 1:
-    // Only ingest if Tune exists AND Ready is strictly 'A' or 'B'
+    const tune = getVal(colIdx.tune);
+    const orig = getVal(colIdx.orig);
+    const wrkOn = getVal(colIdx.wrkOn);
+    const genre = getVal(colIdx.genre);
+    const rawReady = getVal(colIdx.ready);
+    const pBass = getVal(colIdx.pBass);
+    const horns = getVal(colIdx.horns);
+    const estTime = getVal(colIdx.estTime);
+
+    // Normalize readiness (clean hidden characters, spaces, uppercase)
+    const ready = rawReady.replace(/[^A-Za-z]/g, '').toUpperCase();
+
+    // Universal Ingestion Gate: Must have tune name AND readiness strictly 'A' or 'B'
     if (!tune || (ready !== 'A' && ready !== 'B')) {
       return;
     }
 
-    // STRICT INGESTION RULE 2:
-    // Holiday check: Col D contains 'Holiday' or title contains holiday keywords
     const holidayRegex = /(holiday|christmas|xmas|santa|noel|winter wonderland|jingle)/i;
     const isHoliday = holidayRegex.test(genre) || holidayRegex.test(tune);
 
-    const isPBass = ['y', 'yes', 'true', '1'].includes(pBass.toLowerCase());
-    const isHorns = ['y', 'yes', 'true', '1'].includes(horns.toLowerCase());
+    allTracks.push({
+      id: `track-${rowIndex}`,
+      tune,
+      orig,
+      wrkOn,
+      genre,
+      ready,
+      pBass: ['y', 'yes', 'true', '1'].includes(pBass.toLowerCase()),
+      horns: ['y', 'yes', 'true', '1'].includes(horns.toLowerCase()),
+      estTime,
+      isHoliday
+    });
+  });
 
-    allTracks.
+  console.log(`Ingested ${allTracks.length} eligible candidates (Readiness A/B).`);
+  renderCandidatePool();
+}
