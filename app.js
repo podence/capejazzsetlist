@@ -1,96 +1,78 @@
-// --- BULLETPROOF GVIZ PARSER & INGESTION ---
+// --- DIRECT, FIXED-ROW INGESTION (HEADERS ON ROW 3) ---
 
-function parseGVizPayload(gvizData) {
+function loadSheetData() {
+  const callbackName = 'gvizCallback_' + Math.floor(Math.random() * 100000);
+
+  window[callbackName] = (data) => {
+    try {
+      parseFixedGVizPayload(data);
+    } catch (err) {
+      showDiagnosticError(`Parsing error: ${err.message}`);
+    } finally {
+      delete window[callbackName];
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    }
+  };
+
+  const script = document.createElement('script');
+  // tqx=responseHandler routes directly to our window callback
+  script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:${callbackName}&gid=${SHEET_GID}`;
+  script.onerror = () => {
+    showDiagnosticError('Failed to fetch from Google Sheets. Check sheet sharing (Must be "Anyone with link can view").');
+  };
+  document.body.appendChild(script);
+}
+
+function parseFixedGVizPayload(gvizData) {
   if (!gvizData || !gvizData.table || !gvizData.table.rows) {
-    console.error('GViz payload missing table or rows:', gvizData);
+    showDiagnosticError('GViz returned an empty or malformed table structure.');
     return;
   }
 
-  const rawRows = gvizData.table.rows;
-  if (rawRows.length === 0) {
-    console.warn('Google Sheet returned 0 rows.');
-    return;
-  }
+  const rows = gvizData.table.rows;
+  allTracks = [];
 
-  // Helper to extract clean text from any cell
-  const extractCellText = (cell) => {
-    if (!cell) return '';
-    if (cell.f !== undefined && cell.f !== null) return String(cell.f).trim();
-    if (cell.v !== undefined && cell.v !== null) return String(cell.v).trim();
+  // Helper: safely get cell string value
+  const getCell = (row, colIdx) => {
+    if (!row || !row.c || !row.c[colIdx]) return '';
+    const cell = row.c[colIdx];
+    if (cell.v !== null && cell.v !== undefined) return String(cell.v).trim();
+    if (cell.f !== null && cell.f !== undefined) return String(cell.f).trim();
     return '';
   };
 
-  // Determine column index map:
-  // 1. Try table.cols labels
-  // 2. If labels are blank, inspect the first data row (header row)
-  let colMap = {
-    tune: 0,   // Col A
-    genre: 3,  // Col D
-    ready: 5,  // Col F
-    pBass: 6,  // Col G
-    horns: 7,  // Col H
-    estTime: 13 // Col N
-  };
+  // Row index 0 = Sheet Row 1
+  // Row index 1 = Sheet Row 2
+  // Row index 2 = Sheet Row 3 (Headers: Tune, Orig, wrk on, Genre, etc.)
+  // Data starts at Row index 3 (Sheet Row 4)
+  const DATA_START_INDEX = 3;
 
-  let startIndex = 0;
-  const firstRowValues = (rawRows[0].c || []).map(extractCellText);
-  const headerRowHasLabels = firstRowValues.some(v => /tune|song|ready|genre/i.test(v));
-
-  if (headerRowHasLabels) {
-    // Row 0 is the text header row
-    startIndex = 1;
-    firstRowValues.forEach((val, idx) => {
-      const clean = val.toLowerCase();
-      if (/tune|title|song/.test(clean)) colMap.tune = idx;
-      else if (/genre/.test(clean)) colMap.genre = idx;
-      else if (/ready/.test(clean)) colMap.ready = idx;
-      else if (/p\s*bass|phil/.test(clean)) colMap.pBass = idx;
-      else if (/horn/.test(clean)) colMap.horns = idx;
-      else if (/time|duration|est/.test(clean)) colMap.estTime = idx;
-    });
-  } else if (gvizData.table.cols && gvizData.table.cols.some(c => c.label)) {
-    // GViz table.cols has labels
-    gvizData.table.cols.forEach((col, idx) => {
-      const clean = (col.label || '').toLowerCase();
-      if (/tune|title|song/.test(clean)) colMap.tune = idx;
-      else if (/genre/.test(clean)) colMap.genre = idx;
-      else if (/ready/.test(clean)) colMap.ready = idx;
-      else if (/p\s*bass|phil/.test(clean)) colMap.pBass = idx;
-      else if (/horn/.test(clean)) colMap.horns = idx;
-      else if (/time|duration|est/.test(clean)) colMap.estTime = idx;
-    });
+  // Verification: Verify Row 3 contains expected headers
+  if (rows.length > 2) {
+    const checkTuneHeader = getCell(rows[2], 0);
+    const checkReadyHeader = getCell(rows[2], 5);
+    console.log(`[Diagnostic] Row 3 Check -> Col A: "${checkTuneHeader}", Col F: "${checkReadyHeader}"`);
   }
 
-  console.log('Active Column Mapping:', colMap);
+  for (let i = DATA_START_INDEX; i < rows.length; i++) {
+    const row = rows[i];
 
-  allTracks = [];
+    const tune = getCell(row, 0);          // Col A: Tune
+    const genre = getCell(row, 3);         // Col D: Genre
+    const rawReady = getCell(row, 5);      // Col F: Ready
+    const rawPBass = getCell(row, 6);      // Col G: P Bass
+    const rawHorns = getCell(row, 7);      // Col H: Horns
+    const estTime = getCell(row, 13);      // Col N: Est Time
 
-  for (let r = startIndex; r < rawRows.length; r++) {
-    const cells = rawRows[r].c || [];
+    // Clean readiness string (strips whitespace, invisible format characters)
+    const readyClean = rawReady.replace(/[^A-Za-z]/g, '').toUpperCase();
 
-    const getVal = (idx) => extractCellText(cells[idx]);
-
-    const tune = getVal(colMap.tune);
-    const genre = getVal(colMap.genre);
-    const rawReady = getVal(colMap.ready);
-    const rawPBass = getVal(colMap.pBass);
-    const rawHorns = getVal(colMap.horns);
-    const estTime = getVal(colMap.estTime);
-
-    // Skip empty rows or accidental repeated headers
-    if (!tune || /^tune$/i.test(tune)) continue;
-
-    // Normalization: clean whitespace/punctuation, get upper case
-    const readyClean = rawReady.replace(/[^a-zA-Z]/g, '').toUpperCase();
-
-    // STRICT INGESTION CRITERION:
-    // Only bring in if Readiness is strictly 'A' or 'B'
-    if (readyClean !== 'A' && readyClean !== 'B') {
+    // Universal Ingestion Rule: Only ingest if Tune exists AND Ready is strictly 'A' or 'B'
+    if (!tune || (readyClean !== 'A' && readyClean !== 'B')) {
       continue;
     }
 
-    // Holiday Song Detection:
-    // Col D (Genre) contains 'holiday' or title contains seasonal cues
+    // Holiday Check
     const isHoliday = /holiday/i.test(genre) || 
                       /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(tune);
 
@@ -98,7 +80,7 @@ function parseGVizPayload(gvizData) {
     const isHorns = /^(y|yes|true|1)$/i.test(rawHorns);
 
     allTracks.push({
-      id: `track-${r}`,
+      id: `track-${i}`,
       tune,
       genre,
       ready: readyClean,
@@ -109,67 +91,30 @@ function parseGVizPayload(gvizData) {
     });
   }
 
-  console.log(`Ingested ${allTracks.length} total tracks (A/B Ready). Standard: ${allTracks.filter(t => !t.isHoliday).length}, Holiday: ${allTracks.filter(t => t.isHoliday).length}`);
-  
-  renderCandidatePool();
+  // Display clear confirmation banner on page
+  const pool = document.getElementById('candidate-pool');
+  if (allTracks.length === 0) {
+    if (pool) {
+      pool.innerHTML = `
+        <div class="p-4 rounded border border-amber-600/50 bg-amber-950/30 text-amber-200 text-sm">
+          <strong>Connected to Sheet, but 0 songs met criteria.</strong><br>
+          Checked rows starting at Sheet Row 4.<br>
+          Check if Column F contains "A" or "B" on Row 4 onwards.
+        </div>
+      `;
+    }
+  } else {
+    renderCandidatePool();
+  }
 }
 
-// --- BULLETPROOF CANDIDATE POOL RENDERER ---
-
-function renderCandidatePool() {
+function showDiagnosticError(message) {
   const pool = document.getElementById('candidate-pool');
-  if (!pool) {
-    console.error('Candidate pool element (#candidate-pool) not found in DOM.');
-    return;
-  }
-
-  // Get set of all song IDs currently placed in sets to prevent duplicates
-  const placedTrackIds = new Set();
-  document.querySelectorAll('.set-column [data-track-id]').forEach(el => {
-    const id = el.getAttribute('data-track-id');
-    if (id) placedTrackIds.add(id);
-  });
-
-  const visibleTracks = allTracks.filter(track => {
-    // 1. Exclude if already assigned to a set
-    if (placedTrackIds.has(track.id)) return false;
-
-    // 2. Holiday Visibility Logic:
-    // Regular songs are always allowed.
-    // Holiday songs are ONLY visible if showHoliday is toggled ON.
-    if (track.isHoliday && !activeFilters.showHoliday) {
-      return false;
-    }
-
-    // 3. Category & Readiness Filters
-    if (activeFilters.readyA && !activeFilters.readyB && track.ready !== 'A') return false;
-    if (activeFilters.readyB && !activeFilters.readyA && track.ready !== 'B') return false;
-    if (activeFilters.horns && !track.horns) return false;
-    if (activeFilters.pbass && !track.pBass) return false;
-
-    // 4. Live Search Box
-    if (activeFilters.search) {
-      const q = activeFilters.search.toLowerCase();
-      const matchTune = track.tune.toLowerCase().includes(q);
-      const matchGenre = track.genre.toLowerCase().includes(q);
-      if (!matchTune && !matchGenre) return false;
-    }
-
-    return true;
-  });
-
-  pool.innerHTML = '';
-
-  if (visibleTracks.length === 0) {
+  if (pool) {
     pool.innerHTML = `
-      <div class="p-6 text-center text-slate-400 text-sm">
-        No songs match the current filters. ${!activeFilters.showHoliday ? 'Click <strong>+ Holiday</strong> to include holiday repertoire.' : ''}
+      <div class="p-4 rounded border border-rose-600/50 bg-rose-950/40 text-rose-200 text-sm">
+        <strong>Sheet Connection Error:</strong><br>${message}
       </div>
     `;
-    return;
   }
-
-  visibleTracks.forEach(track => {
-    pool.appendChild(createSongCard(track));
-  });
 }
