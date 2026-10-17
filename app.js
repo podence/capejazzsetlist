@@ -9,7 +9,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
   const errorMsg = document.getElementById('error-msg');
   if (banner && errorMsg) {
     banner.classList.remove('hidden');
-    errorMsg.textContent = `${msg} [Line: ${lineNo}, Col: ${columnNo}]`;
+    errorMsg.textContent = `${msg} [Line: ${lineNo}, Col:${columnNo}]`;
   }
   console.error("Setlist App Global Error:", { msg, url, lineNo, columnNo, error });
   return false;
@@ -25,14 +25,14 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
   };
 
   const state = {
-    masterList: [],         // Pristine backup of all fetched songs
-    pool: [],               // Currently remaining candidate pool
-    set1: [],               // Active Set 1
-    set1_res: [],           // Reserve Set 1
-    set2: [],               // Active Set 2
-    set2_res: [],           // Reserve Set 2
+    masterList: [],         // All ingested songs
+    pool: [],               // Active pool items
+    set1: [],               // Set 1 items
+    set1_res: [],           // Set 1 Reserve items
+    set2: [],               // Set 2 items
+    set2_res: [],           // Set 2 Reserve items
     activeCategory: 'all',  // 'all' | 'readyA' | 'readyB' | 'phil' | 'horns'
-    includeHoliday: false   // Holiday modifier: false = excluded; true = included
+    includeHoliday: false   // Off by default
   };
 
   function parseDurationToSec(rawVal, formattedVal) {
@@ -72,50 +72,52 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     return str === 'Y' || str === 'YES' || str === 'W' || str === '1' || str === 'TRUE';
   }
 
+  function checkIsHoliday(title, genre, wholeRowText) {
+    const combined = `${title} ${genre}${wholeRowText}`.toLowerCase();
+    return /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty|merry little|rudolph|roastin/i.test(combined);
+  }
+
   function getGenreClass(genre = '', isHoliday = false) {
     if (isHoliday) return 'title-holiday';
     const g = String(genre).toLowerCase();
-    if (g.includes('holiday') || g.includes('christmas') || g.includes('xmas')) return 'title-holiday';
     if (g.includes('jazz')) return 'title-jazz';
     if (g.includes('blues')) return 'title-blues';
     return 'title-other';
   }
 
   function normalizeRow(flatCells, rawCells) {
-    if (!Array.isArray(flatCells)) return null;
+    if (!Array.isArray(flatCells) || flatCells.length === 0) return null;
 
     const title = flatCells[0] ? String(flatCells[0]).trim() : '';
-    // Must have a valid title and not be a repeat header row
-    if (!title || title.toLowerCase() === 'tune') return null;
+    if (!title || title.toLowerCase() === 'tune' || title === '`') return null;
 
-    const genre = flatCells[2] ? String(flatCells[2]).trim() : 'Other';
+    // Build whole row string to detect flags safely even if columns shifted
+    const wholeRowText = flatCells.join(' ');
+
+    const genre = flatCells[2] ? String(flatCells[2]).trim() : (flatCells[1] ? String(flatCells[1]).trim() : 'Other');
     const readinessRaw = flatCells[5] ? String(flatCells[5]).trim().toUpperCase() : '';
     const philBassVal = flatCells[6] || '';
     const hornsVal = flatCells[7] || '';
 
-    const durRaw = flatCells[10];
-    const durFormatted = rawCells && rawCells[10] ? (rawCells[10].f || rawCells[10].v) : '';
+    const durRaw = flatCells[10] || flatCells[11] || '';
+    const durFormatted = rawCells && (rawCells[10]?.f || rawCells[10]?.v || rawCells[11]?.f || rawCells[11]?.v) || '';
     const durationSec = parseDurationToSec(durRaw, durFormatted);
 
-    // Identify Holiday tunes across Genre, Title, or special notes
-    const isHoliday = /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty/i.test(genre) ||
-                      /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty/i.test(title);
-
-    // Strict Readiness verification: Must be explicitly 'A' or 'B'
-    const isStrictReady = (readinessRaw === 'A' || readinessRaw === 'B');
+    const isHoliday = checkIsHoliday(title, genre, wholeRowText);
+    const isReady = (readinessRaw === 'A' || readinessRaw === 'B');
 
     // Rule:
     // 1. Regular tunes MUST have Readiness strictly 'A' or 'B' (blank readiness rejected).
-    // 2. Holiday tunes are imported whether Readiness is A, B, or holiday-tagged.
-    if (!isStrictReady && !isHoliday) {
+    // 2. Holiday tunes are imported so they can be unlocked by the Holiday button.
+    if (!isReady && !isHoliday) {
       return null;
     }
 
     return {
       id: 'song_' + Math.random().toString(36).substring(2, 9),
       title: title,
-      genre: genre,
-      readiness: isStrictReady ? readinessRaw : (readinessRaw || 'H'),
+      genre: isHoliday ? 'Holiday' : genre,
+      readiness: isReady ? readinessRaw : (readinessRaw || 'H'),
       philBass: isTrueFlag(philBassVal),
       horns: isTrueFlag(hornsVal),
       durationSec: durationSec,
@@ -353,8 +355,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
         animation: 150,
         ghostClass: 'sortable-ghost',
         dragClass: 'sortable-drag',
-        fallbackOnBody: true,
-        swapThreshold: 0.65,
+        emptyInsertThreshold: 30, // Allows dropping anywhere in empty container area
         onEnd: function (evt) {
           const itemEl = evt.item;
           const fromKey = evt.from.dataset.list || key;
@@ -496,7 +497,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
         const [matched] = state.pool.splice(poolIdx, 1);
         state[currentTarget].push(matched);
       } else {
-        const isHoliday = /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty/i.test(cleanTitle);
+        const isHoliday = checkIsHoliday(cleanTitle, '', cleanTitle);
         state[currentTarget].push({
           id: 'manual_' + Math.random().toString(36).substring(2, 9),
           title: cleanTitle,
@@ -514,6 +515,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     renderAll();
   }
 
+  // WORD EXPORT (Standard: All Aptos, all black, single clean headers)
   function exportWordDoc(format) {
     const gigTitle = document.getElementById('gig-title').value.trim() || 'Setlist';
     const isGeoff = (format === 'geoff');
@@ -521,19 +523,31 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     function renderSectionHTML(title, items, isReserve = false) {
       if (!items || items.length === 0) return '';
       
-      let html = `<h2 style="${isGeoff ? 'font-family:Calibri; font-size:18pt; color:#DC2626; font-weight:bold; margin-top:20pt; margin-bottom:6pt;' : 'font-family:Aptos, sans-serif; font-size:14pt; color:#0284C7; font-weight:bold; margin-top:16pt; margin-bottom:6pt;'}">${title.toUpperCase()}</h2>`;
+      let html = '';
+      if (isGeoff) {
+        html += `<h2 style="font-family:Calibri; font-size:18pt; color:#DC2626; font-weight:bold; margin-top:20pt; margin-bottom:6pt;">${title}</h2>`;
+      } else {
+        // Standard: Aptos, 14pt, All Black
+        html += `<h2 style="font-family:Aptos, sans-serif; font-size:14pt; color:#000000; font-weight:bold; margin-top:16pt; margin-bottom:6pt;">${title}</h2>`;
+      }
       
       items.forEach((item, index) => {
         if (item.isCue) {
-          html += `<p style="${isGeoff ? 'font-family:Calibri; font-size:18pt; color:#DC2626; font-style:italic; font-weight:bold; margin:4pt 0 4pt 18pt;' : 'font-family:Aptos, sans-serif; font-size:12pt; color:#64748B; font-style:italic; margin:3pt 0 3pt 14pt;'}">🚩 ${escapeHtml(item.title)}</p>`;
+          if (isGeoff) {
+            html += `<p style="font-family:Calibri; font-size:18pt; color:#DC2626; font-style:italic; font-weight:bold; margin:4pt 0 4pt 18pt;">🚩 ${escapeHtml(item.title)}</p>`;
+          } else {
+            // Standard: Aptos, Italic, Black
+            html += `<p style="font-family:Aptos, sans-serif; font-size:13.5pt; color:#000000; font-style:italic; margin:3pt 0 3pt 14pt;">🚩 ${escapeHtml(item.title)}</p>`;
+          }
         } else {
           const num = isReserve ? '• ' : `${index + 1}. `;
-          const dur = item.durationSec ? ` <span style="color:#DC2626; font-weight:normal;">(${formatSecToMMSS(item.durationSec)})</span>` : '';
+          const dur = item.durationSec ? ` (${formatSecToMMSS(item.durationSec)})` : '';
           
           if (isGeoff) {
-            html += `<p style="font-family:Calibri; font-size:18pt; color:#1D4ED8; font-weight:bold; margin:4pt 0;">${num}${escapeHtml(item.title)}${dur}</p>`;
+            html += `<p style="font-family:Calibri; font-size:18pt; color:#1D4ED8; font-weight:bold; margin:4pt 0;">${num}${escapeHtml(item.title)}<span style="color:#DC2626; font-weight:normal;">${dur}</span></p>`;
           } else {
-            html += `<p style="font-family:Aptos, sans-serif; font-size:13.5pt; color:#0F172A; margin:3pt 0;">${num}<strong>${escapeHtml(item.title)}</strong>${item.durationSec ? ` <span style="color:#64748B;">(${formatSecToMMSS(item.durationSec)})</span>` : ''}</p>`;
+            // Standard: Aptos 13.5pt, All Black
+            html += `<p style="font-family:Aptos, sans-serif; font-size:13.5pt; color:#000000; margin:3pt 0;">${num}${escapeHtml(item.title)}${dur}</p>`;
           }
         }
       });
@@ -551,7 +565,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
         </style>
       </head>
       <body>
-        <h1 style="text-align:center; ${isGeoff ? 'font-family:Calibri; font-size:22pt; color:#DC2626; font-weight:bold;' : 'font-family:Aptos, sans-serif; font-size:18pt; color:#0F172A; font-weight:bold;'} margin-bottom:18pt;">
+        <h1 style="text-align:center; font-family:${isGeoff ? 'Calibri' : 'Aptos, sans-serif'}; font-size:${isGeoff ? '22pt' : '18pt'}; color:${isGeoff ? '#DC2626' : '#000000'}; font-weight:bold; margin-bottom:18pt;">
           ${escapeHtml(gigTitle)}
         </h1>
         ${renderSectionHTML('SET ONE', state.set1)}
