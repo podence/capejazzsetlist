@@ -25,8 +25,8 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
   };
 
   const state = {
-    masterList: [],         // All ingested songs from sheet
-    pool: [],               // Active pool items available to pick
+    masterList: [],         // All ingested songs (Standard + Holiday)
+    pool: [],               // Remaining songs not placed in sets
     set1: [],               // Set 1 items
     set1_res: [],           // Set 1 Reserve items
     set2: [],               // Set 2 items
@@ -34,6 +34,14 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     activeCategory: 'all',  // 'all' | 'readyA' | 'readyB' | 'phil' | 'horns'
     includeHoliday: false   // Default OFF: holiday tunes hidden
   };
+
+  function getFormattedTodayDate() {
+    const d = new Date();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const year = String(d.getFullYear()).slice(-2);
+    return `Set List ${month}/${day}/${year}`;
+  }
 
   function parseDurationToSec(rawVal, formattedVal) {
     let str = (formattedVal || rawVal || '').toString().trim();
@@ -72,7 +80,30 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     return str === 'Y' || str === 'YES' || str === 'W' || str === '1' || str === 'TRUE';
   }
 
-  function checkIsHoliday(flatRow) {
+  function checkIsHoliday(flatRow, title) {
+    const holidayTitles = [
+      "i'll be home for christmas",
+      "jingle bells",
+      "merry little christmas",
+      "winter wonderland",
+      "blue christmas",
+      "christmas time is here",
+      "oh christmas tree",
+      "santa claus is coming",
+      "white christmas",
+      "frosty the snowman",
+      "we wish you a merry christmas",
+      "the christmas song",
+      "run rudolph run",
+      "rockin around the christmas tree",
+      "jingle bell rock"
+    ];
+    
+    const tLower = (title || '').toLowerCase();
+    if (holidayTitles.some(ht => tLower.includes(ht))) {
+      return true;
+    }
+
     const combined = flatRow.join(' ').toLowerCase();
     return /holiday|christmas|xmas|santa|jingle|winter wonderland|frosty|merry little|rudolph|roastin/i.test(combined);
   }
@@ -91,9 +122,26 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     const title = flatCells[0] ? String(flatCells[0]).trim() : '';
     if (!title || title.toLowerCase() === 'tune' || title === '`') return null;
 
-    const isHoliday = checkIsHoliday(flatCells);
+    const isHoliday = checkIsHoliday(flatCells, title);
 
-    // Look for Genre: Col C (index 2) or Col B (index 1)
+    // Locate Readiness by scanning columns 3 through 7 for single letter A or B
+    let readinessRaw = '';
+    for (let c = 3; c <= 7; c++) {
+      const val = flatCells[c] ? String(flatCells[c]).trim().toUpperCase() : '';
+      if (val === 'A' || val === 'B') {
+        readinessRaw = val;
+        break;
+      }
+    }
+
+    // Strict Rule:
+    // Regular tunes MUST have an explicit Readiness of 'A' or 'B' (blank, C, D, eval rejected)
+    // Holiday tunes are ALWAYS ingested so the Holiday button can display them
+    if (!isHoliday && readinessRaw !== 'A' && readinessRaw !== 'B') {
+      return null;
+    }
+
+    // Genre extraction
     let genre = 'Other';
     if (isHoliday) {
       genre = 'Holiday';
@@ -103,34 +151,36 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       genre = flatCells[1].trim();
     }
 
-    // Look for Readiness: Col F (index 5)
-    let readinessRaw = flatCells[5] ? String(flatCells[5]).trim().toUpperCase() : '';
-    
-    // Check if readiness is strictly A or B
-    const isStrictReady = (readinessRaw === 'A' || readinessRaw === 'B');
-
-    // Rule:
-    // 1. Regular tunes MUST have Readiness strictly 'A' or 'B' (blank/eval/other rejected)
-    // 2. Holiday tunes are ingested regardless of readiness so the Holiday button can display them
-    if (!isStrictReady && !isHoliday) {
-      return null;
+    // Phil on Bass & Horns scans
+    let philBass = false;
+    let horns = false;
+    for (let c = 5; c <= 9; c++) {
+      if (isTrueFlag(flatCells[c])) {
+        // First occurrence is typically Bass, next is Horns
+        if (!philBass && (c === 6 || c === 7)) philBass = true;
+        else if (c === 7 || c === 8) horns = true;
+      }
     }
 
-    const philBassVal = flatCells[6] || '';
-    const hornsVal = flatCells[7] || '';
-
     // Duration extraction
-    const durRaw = flatCells[10] || flatCells[11] || '';
-    const durFormatted = rawCells && (rawCells[10]?.f || rawCells[10]?.v || rawCells[11]?.f || rawCells[11]?.v) || '';
-    const durationSec = parseDurationToSec(durRaw, durFormatted);
+    let durationSec = 0;
+    for (let c = 9; c < flatCells.length; c++) {
+      const val = flatCells[c];
+      const fVal = rawCells && rawCells[c] ? (rawCells[c].f || rawCells[c].v) : '';
+      const parsed = parseDurationToSec(val, fVal);
+      if (parsed > 0) {
+        durationSec = parsed;
+        break;
+      }
+    }
 
     return {
       id: 'song_' + Math.random().toString(36).substring(2, 9),
       title: title,
       genre: genre,
-      readiness: isStrictReady ? readinessRaw : (readinessRaw || 'H'),
-      philBass: isTrueFlag(philBassVal),
-      horns: isTrueFlag(hornsVal),
+      readiness: readinessRaw || (isHoliday ? 'H' : 'B'),
+      philBass: philBass,
+      horns: horns,
       durationSec: durationSec,
       isHoliday: isHoliday,
       isCue: false
@@ -242,10 +292,19 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 
     poolContainer.innerHTML = '';
 
-    const filtered = state.pool.filter(item => {
-      // 1. Holiday Exclusion / Inclusion:
-      // If includeHoliday is FALSE, hide all holiday tunes.
-      // If includeHoliday is TRUE, show regular tunes PLUS holiday tunes.
+    // Collect IDs of songs already in sets so they don't appear in pool
+    const assignedIds = new Set([
+      ...state.set1.map(s => s.id),
+      ...state.set1_res.map(s => s.id),
+      ...state.set2.map(s => s.id),
+      ...state.set2_res.map(s => s.id)
+    ]);
+
+    // Filter from Master Catalog directly to prevent permanent data loss
+    const availableSongs = state.masterList.filter(s => !assignedIds.has(s.id));
+
+    const filtered = availableSongs.filter(item => {
+      // 1. Holiday Exclusion: If false, completely exclude holiday songs
       if (!state.includeHoliday && item.isHoliday) {
         return false;
       }
@@ -284,357 +343,4 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     });
 
     if (countId) {
-      const cEl = document.getElementById(countId);
-      if (cEl) cEl.textContent = `${songCount} song${songCount === 1 ? '' : 's'}`;
-    }
-    if (timeId) {
-      const tEl = document.getElementById(timeId);
-      if (tEl) tEl.textContent = formatSecToMMSS(totalSec);
-    }
-  }
-
-  function moveItemState(itemId, fromListKey, toListKey, newIndex) {
-    const sourceArr = state[fromListKey];
-    const targetArr = state[toListKey];
-    if (!sourceArr || !targetArr) return;
-
-    const sourceIndex = sourceArr.findIndex(x => x.id === itemId);
-    if (sourceIndex === -1) return;
-
-    const [item] = sourceArr.splice(sourceIndex, 1);
-    const targetIndex = (typeof newIndex === 'number' && newIndex >= 0) ? newIndex : targetArr.length;
-    targetArr.splice(targetIndex, 0, item);
-
-    renderAll();
-  }
-
-  function removeItem(itemId, listKey) {
-    const arr = state[listKey];
-    if (!arr) return;
-    const idx = arr.findIndex(x => x.id === itemId);
-    if (idx !== -1) {
-      const [removed] = arr.splice(idx, 1);
-      if (listKey !== 'pool' && !removed.isCue) {
-        state.pool.push(removed);
-      }
-      renderAll();
-    }
-  }
-
-  function duplicateItem(itemId, listKey) {
-    const arr = state[listKey];
-    if (!arr) return;
-    const idx = arr.findIndex(x => x.id === itemId);
-    if (idx !== -1) {
-      const original = arr[idx];
-      const clone = Object.assign({}, original, {
-        id: (original.isCue ? 'cue_' : 'song_') + Math.random().toString(36).substring(2, 9)
-      });
-      arr.splice(idx + 1, 0, clone);
-      renderAll();
-    }
-  }
-
-  function resetAll() {
-    if (!confirm("Reset all sets back to the candidate pool?")) return;
-    
-    state.pool = JSON.parse(JSON.stringify(state.masterList));
-    state.set1 = [];
-    state.set1_res = [];
-    state.set2 = [];
-    state.set2_res = [];
-    
-    const gigTitleInput = document.getElementById('gig-title');
-    if (gigTitleInput) gigTitleInput.value = "Set List Name";
-
-    renderAll();
-  }
-
-  function initSortableContainers() {
-    const listMap = [
-      { id: 'pool-list', key: 'pool' },
-      { id: 'set1-list', key: 'set1' },
-      { id: 'set1-res-list', key: 'set1_res' },
-      { id: 'set2-list', key: 'set2' },
-      { id: 'set2-res-list', key: 'set2_res' }
-    ];
-
-    listMap.forEach(({ id, key }) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-
-      Sortable.create(el, {
-        group: 'setlist-group',
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        dragClass: 'sortable-drag',
-        emptyInsertThreshold: 30,
-        onEnd: function (evt) {
-          const itemEl = evt.item;
-          const fromKey = evt.from.dataset.list || key;
-          const toKey = evt.to.dataset.list || listMap.find(m => m.id === evt.to.id)?.key;
-          const itemId = itemEl.dataset.id;
-          
-          if (!toKey || !fromKey || !itemId) {
-            renderAll();
-            return;
-          }
-
-          moveItemState(itemId, fromKey, toKey, evt.newIndex);
-        }
-      });
-    });
-
-    const guitarCue = document.getElementById('drag-guitar-cue');
-    if (guitarCue) {
-      guitarCue.addEventListener('click', () => {
-        state.set1.push({
-          id: 'cue_' + Math.random().toString(36).substring(2, 9),
-          title: 'Switch guitars',
-          isCue: true
-        });
-        renderAll();
-      });
-    }
-
-    listMap.forEach(({ id, key }) => {
-      const el = document.getElementById(id);
-      if (el) el.dataset.list = key;
-    });
-  }
-
-  document.addEventListener('click', function (e) {
-    const removeBtn = e.target.closest('.btn-remove');
-    if (removeBtn) {
-      const card = removeBtn.closest('.card-song');
-      if (card) removeItem(card.dataset.id, card.dataset.list);
-      return;
-    }
-
-    const dupBtn = e.target.closest('.btn-dup');
-    if (dupBtn) {
-      const card = dupBtn.closest('.card-song');
-      if (card) duplicateItem(card.dataset.id, card.dataset.list);
-      return;
-    }
-  });
-
-  function initFilterChips() {
-    // Exclusive Category Filter Chips
-    const categoryChips = document.querySelectorAll('.chip[data-filter]');
-    categoryChips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        categoryChips.forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        state.activeCategory = chip.dataset.filter;
-        renderPool();
-      });
-    });
-
-    // Independent Holiday Toggle Modifier
-    const holidayBtn = document.getElementById('btn-holiday-toggle');
-    if (holidayBtn) {
-      holidayBtn.addEventListener('click', () => {
-        state.includeHoliday = !state.includeHoliday;
-        holidayBtn.classList.toggle('active', state.includeHoliday);
-        document.body.classList.toggle('holiday-highlight', state.includeHoliday);
-        renderPool(); // Explicitly trigger candidate pool re-render
-      });
-    }
-  }
-
-  function initModals() {
-    const resetBtn = document.getElementById('btn-reset');
-    if (resetBtn) resetBtn.onclick = resetAll;
-
-    const pasteModal = document.getElementById('paste-modal');
-    document.getElementById('btn-open-paste-modal').onclick = () => pasteModal.classList.remove('hidden');
-    document.getElementById('btn-close-paste').onclick = () => pasteModal.classList.add('hidden');
-    document.getElementById('btn-parse-tsv').onclick = () => {
-      const tsv = document.getElementById('paste-textarea').value;
-      const lines = tsv.split('\n');
-      const parsed = [];
-      lines.forEach(line => {
-        if (!line.trim()) return;
-        const row = line.split('\t');
-        const norm = normalizeRow(row, null);
-        if (norm) parsed.push(norm);
-      });
-      if (parsed.length) {
-        state.masterList = JSON.parse(JSON.stringify(parsed));
-        state.pool = parsed;
-        renderAll();
-      }
-      pasteModal.classList.add('hidden');
-      document.getElementById('paste-textarea').value = '';
-    };
-
-    const importModal = document.getElementById('import-modal');
-    document.getElementById('btn-open-import-modal').onclick = () => importModal.classList.remove('hidden');
-    document.getElementById('btn-close-import').onclick = () => importModal.classList.add('hidden');
-    document.getElementById('btn-run-import').onclick = () => {
-      const text = document.getElementById('import-textarea').value;
-      parseSetlistText(text);
-      importModal.classList.add('hidden');
-      document.getElementById('import-textarea').value = '';
-    };
-
-    const exportBtn = document.getElementById('btn-export-dropdown');
-    const exportMenu = document.getElementById('export-menu');
-    exportBtn.onclick = (e) => {
-      e.stopPropagation();
-      exportMenu.classList.toggle('hidden');
-    };
-    document.addEventListener('click', () => exportMenu.classList.add('hidden'));
-
-    document.getElementById('btn-export-standard').onclick = () => exportWordDoc('standard');
-    document.getElementById('btn-export-geoff').onclick = () => exportWordDoc('geoff');
-
-    document.getElementById('btn-reload-sheet').onclick = loadRemoteSheet;
-  }
-
-  function parseSetlistText(text) {
-    let currentTarget = 'set1';
-    const lines = text.split('\n');
-
-    lines.forEach(rawLine => {
-      const line = rawLine.trim();
-      if (!line) return;
-
-      if (/^set\s*one/i.test(line)) { currentTarget = 'set1'; return; }
-      if (/^set\s*two/i.test(line)) { currentTarget = 'set2'; return; }
-      if (/reserve/i.test(line)) { currentTarget = (currentTarget === 'set1' ? 'set1_res' : 'set2_res'); return; }
-
-      const cleanTitle = line.replace(/^\d+[\.\-\)]\s*/, '').trim();
-      
-      const poolIdx = state.pool.findIndex(p => p.title.toLowerCase() === cleanTitle.toLowerCase());
-      if (poolIdx !== -1) {
-        const [matched] = state.pool.splice(poolIdx, 1);
-        state[currentTarget].push(matched);
-      } else {
-        const isHoliday = checkIsHoliday([cleanTitle]);
-        state[currentTarget].push({
-          id: 'manual_' + Math.random().toString(36).substring(2, 9),
-          title: cleanTitle,
-          readiness: 'B',
-          genre: isHoliday ? 'Holiday' : 'Other',
-          durationSec: 0,
-          philBass: false,
-          horns: false,
-          isHoliday: isHoliday,
-          isCue: cleanTitle.startsWith('+') || /cue|switch/i.test(cleanTitle)
-        });
-      }
-    });
-
-    renderAll();
-  }
-
-  // WORD EXPORT (Standard & Geoff's with ALL NUMBERING REMOVED)
-  function exportWordDoc(format) {
-    const gigTitle = document.getElementById('gig-title').value.trim() || 'Setlist';
-    const isGeoff = (format === 'geoff');
-
-    function renderSectionHTML(title, items) {
-      if (!items || items.length === 0) return '';
-      
-      let html = '';
-      if (isGeoff) {
-        html += `<h2 style="font-family:Calibri; font-size:18pt; color:#DC2626; font-weight:bold; margin-top:20pt; margin-bottom:6pt;">${title}</h2>`;
-      } else {
-        html += `<h2 style="font-family:Aptos, sans-serif; font-size:14pt; color:#000000; font-weight:bold; margin-top:16pt; margin-bottom:6pt;">${title}</h2>`;
-      }
-      
-      items.forEach(item => {
-        if (item.isCue) {
-          if (isGeoff) {
-            html += `<p style="font-family:Calibri; font-size:18pt; color:#DC2626; font-style:italic; font-weight:bold; margin:4pt 0 4pt 18pt;">🚩 ${escapeHtml(item.title)}</p>`;
-          } else {
-            html += `<p style="font-family:Aptos, sans-serif; font-size:13.5pt; color:#000000; font-style:italic; margin:3pt 0 3pt 14pt;">🚩 ${escapeHtml(item.title)}</p>`;
-          }
-        } else {
-          // No numbers: just song title followed by duration
-          const dur = item.durationSec ? ` (${formatSecToMMSS(item.durationSec)})` : '';
-          
-          if (isGeoff) {
-            html += `<p style="font-family:Calibri; font-size:18pt; color:#1D4ED8; font-weight:bold; margin:4pt 0;">${escapeHtml(item.title)}<span style="color:#DC2626; font-weight:normal;">${dur}</span></p>`;
-          } else {
-            html += `<p style="font-family:Aptos, sans-serif; font-size:13.5pt; color:#000000; margin:3pt 0;">${escapeHtml(item.title)}${dur}</p>`;
-          }
-        }
-      });
-      return html;
-    }
-
-    const docContent = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head>
-        <meta charset='utf-8'>
-        <title>${escapeHtml(gigTitle)}</title>
-        <style>
-          @page { size: 8.5in 11in; margin: 0.8in; }
-          body { font-family: ${isGeoff ? 'Calibri' : 'Aptos, sans-serif'}; }
-        </style>
-      </head>
-      <body>
-        <h1 style="text-align:center; font-family:${isGeoff ? 'Calibri' : 'Aptos, sans-serif'}; font-size:${isGeoff ? '22pt' : '18pt'}; color:${isGeoff ? '#DC2626' : '#000000'}; font-weight:bold; margin-bottom:18pt;">
-          ${escapeHtml(gigTitle)}
-        </h1>
-        ${renderSectionHTML('SET ONE', state.set1)}
-        ${renderSectionHTML('SET ONE RESERVE', state.set1_res)}
-        ${renderSectionHTML('SET TWO', state.set2)}
-        ${renderSectionHTML('SET TWO RESERVE', state.set2_res)}
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.href = url;
-    downloadAnchor.download = `${gigTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${format}.doc`;
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    document.body.removeChild(downloadAnchor);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  window.app = {
-    addCustomCue(targetKey) {
-      const cueText = prompt('Enter custom cue text:', 'Switch guitars');
-      if (cueText && cueText.trim()) {
-        state[targetKey].push({
-          id: 'cue_' + Math.random().toString(36).substring(2, 9),
-          title: cueText.trim(),
-          isCue: true
-        });
-        renderAll();
-      }
-    }
-  };
-
-  async function loadRemoteSheet() {
-    try {
-      const items = await fetchGoogleSheetData();
-      state.masterList = JSON.parse(JSON.stringify(items));
-      state.pool = items;
-      renderAll();
-    } catch (err) {
-      console.warn("GViz fetch issue. App ready for TSV paste.", err);
-      renderAll();
-    }
-  }
-
-  function init() {
-    initSortableContainers();
-    initFilterChips();
-    initModals();
-    loadRemoteSheet();
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
+      const cEl = document.
