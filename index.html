@@ -133,12 +133,55 @@
       transition: all 0.15s ease;
     }
     .btn:hover { background: #334155; border-color: #475569; }
+
+    /* Dropdown for Download Button */
+    .dropdown {
+      position: relative;
+      display: inline-block;
+    }
     .btn-word {
       background: #1d4ed8;
       color: #ffffff;
       border: 1px solid #3b82f6;
     }
     .btn-word:hover { background: #2563eb; }
+    .dropdown-content {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: 105%;
+      background-color: #101624;
+      min-width: 210px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      border: 1px solid #23314c;
+      border-radius: 8px;
+      z-index: 50;
+      overflow: hidden;
+    }
+    .dropdown-content a {
+      color: #f8fafc;
+      padding: 10px 14px;
+      text-decoration: none;
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dropdown-content a:hover {
+      background-color: #1c273c;
+      color: var(--cape-periwinkle);
+    }
+    .dropdown-content a small {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: normal;
+      margin-top: 2px;
+    }
+    .dropdown:hover .dropdown-content {
+      display: block;
+    }
 
     main {
       flex: 1;
@@ -422,7 +465,21 @@
       <button class="btn" onclick="resetState()">🔄 Reset</button>
       <button class="btn" onclick="openImportModal()">📥 Import Previous Set</button>
       <button class="btn" onclick="openPasteModal()">📋 Paste Sheet Data</button>
-      <button class="btn btn-word" onclick="downloadWordDoc()">📄 Download Word Doc</button>
+      
+      <!-- Split Format Download Dropdown -->
+      <div class="dropdown">
+        <button class="btn btn-word">📄 Download Word Doc ▾</button>
+        <div class="dropdown-content">
+          <a onclick="downloadWordDoc('plain')">
+            Standard Format
+            <small>Clean black, Aptos 13.5pt</small>
+          </a>
+          <a onclick="downloadWordDoc('geoff')">
+            Geoff's Format
+            <small>Calibri 18pt, blue songs & red times</small>
+          </a>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -610,628 +667,4 @@
       const result = [];
       let cur = '';
       let inQuotes = false;
-      for (let i = 0; i < str.length; i++) {
-        const char = str[i];
-        if (char === '"' || char === '“' || char === '”') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          result.push(cur.trim().replace(/^["“]|["”]$/g, ''));
-          cur = '';
-        } else {
-          cur += char;
-        }
-      }
-      result.push(cur.trim().replace(/^["“]|["”]$/g, ''));
-      return result;
-    }
-
-    function parseSheetCsv(csvText) {
-      const lines = csvText.split(/\r?\n/).filter(l => l.trim() !== '');
-      const parsed = [];
-      itemRegistry.clear();
-
-      for (let i = 3; i < lines.length; i++) {
-        const row = parseCsvLine(lines[i]);
-        if (!row || row.length === 0) continue;
-
-        const title = row[0] ? row[0].trim() : '';
-        const genre = row[2] ? row[2].trim() : '';
-        const ready = row[5] ? row[5].trim().toUpperCase() : '';
-        const pBass = row[6] ? row[6].trim() : '';
-        const horns = row[7] ? row[7].trim() : '';
-        const rawDur = row[10] ? row[10].trim() : '';
-
-        const isHol = isHolidayGenre(genre);
-
-        if (title && (ready === 'A' || ready === 'B' || isHol)) {
-          const song = {
-            id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
-            title: title,
-            cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            genre: genre || (isHol ? 'Holiday' : ''),
-            readiness: ready || 'A',
-            isHoliday: isHol,
-            philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
-            horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
-            duration: formatCardDuration(rawDur),
-            rawDuration: rawDur,
-            isCue: false
-          };
-          itemRegistry.set(song.id, song);
-          parsed.push(song);
-        }
-      }
-
-      applyParsedData(parsed);
-    }
-
-    function fetchSheetJsonp() {
-      const existing = document.getElementById('gviz-jsonp-script');
-      if (existing) existing.remove();
-      const script = document.createElement('script');
-      script.id = 'gviz-jsonp-script';
-      script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}&_t=${Date.now()}`;
-      document.body.appendChild(script);
-    }
-
-    window.handleGvizResponse = function(response) {
-      if (!response || !response.table || !response.table.rows) return;
-      const rows = response.table.rows;
-      const parsed = [];
-      itemRegistry.clear();
-
-      for (let i = 3; i < rows.length; i++) {
-        const c = rows[i].c;
-        if (!c) continue;
-
-        const title = c[0] ? String(c[0].v || '').trim() : '';
-        const genre = c[2] ? String(c[2].v || '').trim() : '';
-        let ready = c[5] ? String(c[5].v || '').trim().toUpperCase() : '';
-        const pBass = c[6] ? String(c[6].v || '').trim() : '';
-        const horns = c[7] ? String(c[7].v || '').trim() : '';
-        const rawDur = c[10] ? String(c[10].f || c[10].v || '').trim() : '';
-
-        const isHol = isHolidayGenre(genre);
-
-        if (title && (ready === 'A' || ready === 'B' || isHol)) {
-          const song = {
-            id: 'song_' + i + '_' + title.replace(/[^a-zA-Z0-9]/g, ''),
-            title: title,
-            cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            genre: genre || (isHol ? 'Holiday' : ''),
-            readiness: ready || 'A',
-            isHoliday: isHol,
-            philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
-            horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
-            duration: formatCardDuration(rawDur),
-            rawDuration: rawDur,
-            isCue: false
-          };
-          itemRegistry.set(song.id, song);
-          parsed.push(song);
-        }
-      }
-
-      applyParsedData(parsed);
-    };
-
-    function applyParsedData(parsed) {
-      allSheetSongs = parsed;
-      candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs];
-      set1Main = [];
-      set1Reserve = [];
-      set2Main = [];
-      set2Reserve = [];
-      renderAll();
-    }
-
-    function addStageCue(setNum) {
-      const cueText = prompt("Enter stage cue (e.g., 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
-      if (!cueText) return;
-      const cueItem = {
-        id: 'cue_' + Date.now(),
-        title: cueText.trim(),
-        cleanTitle: cueText.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        genre: '',
-        isCue: true,
-        duration: '0:00'
-      };
-      itemRegistry.set(cueItem.id, cueItem);
-      if (setNum === 1) set1Main.push(cueItem);
-      else set2Main.push(cueItem);
-      renderAll();
-    }
-
-    function renderAll() {
-      const hasSwitchInCandidates = candidateSongs.some(s => s.isCue && s.title.toLowerCase().includes('switch guitar'));
-      if (!hasSwitchInCandidates) {
-        candidateSongs.unshift(createSwitchGuitarsCue());
-      }
-
-      const q = (document.getElementById('search-input').value || '').toLowerCase();
-      const candEl = document.getElementById('list-candidates');
-      const s1MainEl = document.getElementById('list-set1-main');
-      const s1ResEl = document.getElementById('list-set1-reserve');
-      const s2MainEl = document.getElementById('list-set2-main');
-      const s2ResEl = document.getElementById('list-set2-reserve');
-
-      candEl.innerHTML = '';
-      s1MainEl.innerHTML = '';
-      s1ResEl.innerHTML = '';
-      s2MainEl.innerHTML = '';
-      s2ResEl.innerHTML = '';
-
-      const filteredCandidates = candidateSongs.filter(s => {
-        if (s.isCue) return true;
-
-        const isHol = isHolidayGenre(s.genre) || s.isHoliday;
-
-        if (!filterHoliday && isHol) return false;
-
-        if (filterHoliday && isHol) {
-          if (q && !s.title.toLowerCase().includes(q) && !s.genre.toLowerCase().includes(q)) return false;
-          return true;
-        }
-
-        if (currentReadyFilter !== 'ALL' && s.readiness !== currentReadyFilter) return false;
-        if (filterBass && !s.philBass) return false;
-        if (filterHorns && !s.horns) return false;
-        if (q && !s.title.toLowerCase().includes(q) && !s.genre.toLowerCase().includes(q)) return false;
-        return true;
-      });
-
-      const songCountOnly = filteredCandidates.filter(s => !s.isCue).length;
-      document.getElementById('cand-count').innerText = `${songCountOnly} songs`;
-      filteredCandidates.forEach(s => candEl.appendChild(createCard(s, false)));
-
-      set1Main.forEach(s => s1MainEl.appendChild(createCard(s, true)));
-      set1Reserve.forEach(s => s1ResEl.appendChild(createCard(s, true)));
-      set2Main.forEach(s => s2MainEl.appendChild(createCard(s, true)));
-      set2Reserve.forEach(s => s2ResEl.appendChild(createCard(s, true)));
-
-      updateMeta('set1-meta', set1Main);
-      updateMeta('set2-meta', set2Main);
-      document.getElementById('set1-reserve-meta').innerText = `${set1Reserve.filter(s => !s.isCue).length} songs`;
-      document.getElementById('set2-reserve-meta').innerText = `${set2Reserve.filter(s => !s.isCue).length} songs`;
-    }
-
-    function createCard(s, inSet = false) {
-      const card = document.createElement('div');
-      card.className = 'song-card' + (s.isCue ? ' card-cue' : '');
-      card.setAttribute('data-id', s.id);
-
-      if (s.isCue) {
-        card.innerHTML = `
-          <div class="card-top">
-            <span class="song-title">📌 ${s.title}</span>
-            <span style="font-size:11px;color:#fda4af;cursor:pointer;" onclick="removeCue('${s.id}')">✕</span>
-          </div>
-        `;
-        return card;
-      }
-
-      const colorClass = getGenreClass(s.genre);
-
-      card.innerHTML = `
-        <div class="card-top">
-          <span class="song-title ${colorClass}">${s.title}</span>
-          <div class="card-top-right">
-            ${inSet ? `<span class="btn-dup" title="Duplicate / Repeat Song" onclick="duplicateSong('${s.id}')">⎘</span>` : ''}
-            <span class="song-duration">${s.duration}</span>
-          </div>
-        </div>
-        <div class="card-bottom">
-          <div class="badges">
-            <span class="badge badge-ready-${s.readiness.toLowerCase()}">Ready ${s.readiness}</span>
-            ${s.philBass ? '<span class="badge badge-bass">🎸 Phil Bass</span>' : ''}
-            ${s.horns ? '<span class="badge badge-horns">🎺 Horns</span>' : ''}
-          </div>
-          ${s.genre ? `<span class="genre-tag">${s.genre}</span>` : ''}
-        </div>
-      `;
-      return card;
-    }
-
-    function removeCue(id) {
-      candidateSongs = candidateSongs.filter(i => i.id !== id);
-      set1Main = set1Main.filter(i => i.id !== id);
-      set1Reserve = set1Reserve.filter(i => i.id !== id);
-      set2Main = set2Main.filter(i => i.id !== id);
-      set2Reserve = set2Reserve.filter(i => i.id !== id);
-      renderAll();
-    }
-
-    function updateMeta(elId, list) {
-      let totalSec = 0;
-      let count = 0;
-      list.forEach(s => {
-        if (!s.isCue) {
-          count++;
-          totalSec += parseDurationToSeconds(s.rawDuration || s.duration);
-        }
-      });
-      const m = Math.round(totalSec / 60);
-      document.getElementById(elId).innerText = `${count} songs • ${m} mins`;
-    }
-
-    function initDnD() {
-      const opts = {
-        group: 'band-sets',
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        onEnd: function() {
-          set1Main = getListOrder('list-set1-main');
-          set1Reserve = getListOrder('list-set1-reserve');
-          set2Main = getListOrder('list-set2-main');
-          set2Reserve = getListOrder('list-set2-reserve');
-
-          const assignedIds = new Set([
-            ...set1Main.map(s => s.id),
-            ...set1Reserve.map(s => s.id),
-            ...set2Main.map(s => s.id),
-            ...set2Reserve.map(s => s.id)
-          ]);
-
-          candidateSongs = candidateSongs.filter(s => {
-            if (s.isCue) return true;
-            return !assignedIds.has(s.id);
-          });
-
-          renderAll();
-        }
-      };
-      new Sortable(document.getElementById('list-candidates'), opts);
-      new Sortable(document.getElementById('list-set1-main'), opts);
-      new Sortable(document.getElementById('list-set1-reserve'), opts);
-      new Sortable(document.getElementById('list-set2-main'), opts);
-      new Sortable(document.getElementById('list-set2-reserve'), opts);
-    }
-
-    function getListOrder(containerId) {
-      const el = document.getElementById(containerId);
-      if (!el) return [];
-      const ids = Array.from(el.children).map(node => node.getAttribute('data-id'));
-      return ids.map(id => itemRegistry.get(id)).filter(Boolean);
-    }
-
-    function setReadyFilter(val) {
-      currentReadyFilter = val;
-      ['all', 'a', 'b'].forEach(k => document.getElementById('chip-' + k).classList.remove('active'));
-      document.getElementById('chip-' + val.toLowerCase()).classList.add('active');
-      renderAll();
-    }
-
-    function toggleBadgeFilter(type) {
-      if (type === 'bass') {
-        filterBass = !filterBass;
-        document.getElementById('chip-bass').classList.toggle('active', filterBass);
-      } else {
-        filterHorns = !filterHorns;
-        document.getElementById('chip-horns').classList.toggle('active', filterHorns);
-      }
-      renderAll();
-    }
-
-    function toggleHolidayFilter() {
-      filterHoliday = !filterHoliday;
-      document.getElementById('chip-holiday').classList.toggle('active', filterHoliday);
-      renderAll();
-    }
-
-    function downloadWordDoc() {
-      const gigTitle = document.getElementById('gig-title').value || "Set List Name";
-
-      let s1Count = 0; let s1Sec = 0;
-      set1Main.forEach(i => {
-        if (!i.isCue) {
-          s1Count++;
-          s1Sec += parseDurationToSeconds(i.rawDuration || i.duration);
-        }
-      });
-      const s1Mins = Math.round(s1Sec / 60);
-
-      let s2Count = 0; let s2Sec = 0;
-      set2Main.forEach(i => {
-        if (!i.isCue) {
-          s2Count++;
-          s2Sec += parseDurationToSeconds(i.rawDuration || i.duration);
-        }
-      });
-      const s2Mins = Math.round(s2Sec / 60);
-
-      let col1Html = `<div class="set-title">SET ONE</div>`;
-      set1Main.forEach(item => {
-        if (item.isCue) col1Html += `<div class="cue-item">${item.title}</div>`;
-        else col1Html += `<div class="song-item">${item.title}</div>`;
-      });
-      col1Html += `<div class="summary-line">${s1Count} songs ${s1Mins} mins.</div>`;
-
-      if (set1Reserve.length > 0) {
-        col1Html += `<div class="reserve-title">Reserve</div>`;
-        set1Reserve.forEach(item => {
-          col1Html += `<div class="song-item">${item.title}</div>`;
-        });
-      }
-
-      let col2Html = `<div class="set-title">SET TWO</div>`;
-      set2Main.forEach(item => {
-        if (item.isCue) col2Html += `<div class="cue-item">${item.title}</div>`;
-        else col2Html += `<div class="song-item">${item.title}</div>`;
-      });
-      col2Html += `<div class="summary-line">${s2Count} Songs – ${s2Mins} mins.</div>`;
-
-      if (set2Reserve.length > 0) {
-        col2Html += `<div class="reserve-title">Reserve</div>`;
-        set2Reserve.forEach(item => {
-          col2Html += `<div class="song-item">${item.title}</div>`;
-        });
-      }
-
-      const docContent = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-          <meta charset='utf-8'>
-          <title>${gigTitle}</title>
-          <style>
-            @page {
-              size: 8.5in 11in;
-              margin: 0.75in;
-            }
-            body {
-              font-family: 'Aptos', 'Calibri', 'Segoe UI', Arial, sans-serif;
-              font-size: 13.5pt;
-              line-height: 1.25;
-              color: #000000;
-              margin: 0;
-              padding: 0;
-            }
-            .gig-title {
-              font-size: 15pt;
-              font-weight: bold;
-              margin-bottom: 12pt;
-              color: #000000;
-            }
-            table.two-col-layout {
-              width: 100%;
-              border-collapse: collapse;
-              border: none;
-            }
-            td.col-set {
-              width: 50%;
-              vertical-align: top;
-              padding-right: 20pt;
-            }
-            td.col-set + td.col-set {
-              padding-right: 0pt;
-              padding-left: 20pt;
-            }
-            .set-title {
-              font-size: 14pt;
-              font-weight: bold;
-              margin-bottom: 6pt;
-              text-transform: uppercase;
-            }
-            .song-item {
-              margin-top: 1.5pt;
-              margin-bottom: 1.5pt;
-            }
-            .cue-item {
-              margin-top: 3pt;
-              margin-bottom: 3pt;
-              font-style: italic;
-              color: #111111;
-            }
-            .summary-line {
-              font-weight: bold;
-              margin-top: 6pt;
-              margin-bottom: 14pt;
-            }
-            .reserve-title {
-              font-size: 13.5pt;
-              font-weight: bold;
-              margin-top: 10pt;
-              margin-bottom: 3pt;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="gig-title">${gigTitle}</div>
-          <table class="two-col-layout">
-            <tr>
-              <td class="col-set">
-                ${col1Html}
-              </td>
-              <td class="col-set">
-                ${col2Html}
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-      `;
-
-      const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = gigTitle.replace(/[^a-zA-Z0-9_-]/g, '_') + '.doc';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }
-
-    function openImportModal() {
-      document.getElementById('modal-title').innerText = 'Import Previous Setlist';
-      document.getElementById('modal-desc').innerText = 'Paste text from an old Word doc or setlist. The app reconstructs Set 1, Set 2, Reserves, and Cues matching your sheet!';
-      document.getElementById('modal-text').value = '';
-      document.getElementById('modal-text').placeholder = "Set List Name\nSET ONE\nTake the A Train\nSwitch guitars\n...\nSET TWO\nSF Bay Blues\n...\nReserve\nWichita Lineman";
-      const btn = document.getElementById('modal-btn');
-      btn.innerText = 'Reconstruct Setlist';
-      btn.onclick = parsePreviousSetlistText;
-      document.getElementById('app-modal').style.display = 'flex';
-    }
-
-    function parsePreviousSetlistText() {
-      const text = document.getElementById('modal-text').value;
-      if (!text.trim()) return;
-
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      let currentSection = 'HEADER';
-
-      const s1 = [];
-      const s1Res = [];
-      const s2 = [];
-      const s2Res = [];
-
-      lines.forEach(line => {
-        const up = line.toUpperCase();
-        
-        if (up.includes('SET ONE') || up === 'SET 1') {
-          currentSection = 'SET1';
-          return;
-        }
-        if (up.includes('SET TWO') || up === 'SET 2') {
-          currentSection = 'SET2';
-          return;
-        }
-        if (up === 'RESERVE' || up.startsWith('RESERVE')) {
-          if (currentSection === 'SET1' || currentSection === 'SET1_RES') currentSection = 'SET1_RES';
-          else currentSection = 'SET2_RES';
-          return;
-        }
-
-        if (line.match(/\d+\s+songs/i) || line.match(/\d+\s+mins/i)) {
-          return;
-        }
-
-        if (currentSection === 'HEADER') {
-          document.getElementById('gig-title').value = line;
-          return;
-        }
-
-        const clean = line.replace(/^\d+[\.\)]\s*/, '').trim();
-        if (!clean) return;
-
-        const isKnownCue = clean.toLowerCase().includes('switch guitar') || 
-                           clean.toLowerCase().includes('acoustic guitar') || 
-                           clean.toLowerCase().includes('break') || 
-                           clean.toLowerCase().startsWith('tune');
-
-        let matchedItem = null;
-
-        if (isKnownCue) {
-          matchedItem = {
-            id: 'cue_' + Math.random().toString(36).substr(2, 9),
-            title: clean,
-            cleanTitle: clean.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            genre: '',
-            isCue: true,
-            duration: '0:00'
-          };
-          itemRegistry.set(matchedItem.id, matchedItem);
-        } else {
-          const needle = clean.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const found = allSheetSongs.find(s => s.cleanTitle === needle || s.cleanTitle.includes(needle) || needle.includes(s.cleanTitle));
-
-          if (found) {
-            matchedItem = { ...found };
-          } else {
-            matchedItem = {
-              id: 'unmatched_' + Math.random().toString(36).substr(2, 9),
-              title: clean,
-              cleanTitle: clean.toLowerCase().replace(/[^a-z0-9]/g, ''),
-              genre: 'Pasted',
-              readiness: 'A',
-              philBass: false,
-              horns: false,
-              duration: '3:00',
-              rawDuration: '3:00',
-              isCue: false
-            };
-          }
-          itemRegistry.set(matchedItem.id, matchedItem);
-        }
-
-        if (currentSection === 'SET1') s1.push(matchedItem);
-        else if (currentSection === 'SET1_RES') s1Res.push(matchedItem);
-        else if (currentSection === 'SET2') s2.push(matchedItem);
-        else if (currentSection === 'SET2_RES') s2Res.push(matchedItem);
-      });
-
-      set1Main = s1;
-      set1Reserve = s1Res;
-      set2Main = s2;
-      set2Reserve = s2Res;
-
-      const usedIds = new Set([...set1Main, ...set1Reserve, ...set2Main, ...set2Reserve].map(s => s.id));
-      candidateSongs = [createSwitchGuitarsCue(), ...allSheetSongs.filter(s => !usedIds.has(s.id))];
-
-      renderAll();
-      closeModal();
-    }
-
-    function openPasteModal() {
-      document.getElementById('modal-title').innerText = 'Paste Spreadsheet Rows';
-      document.getElementById('modal-desc').innerText = 'If offline, copy rows directly from your Google Sheet and paste them here.';
-      document.getElementById('modal-text').value = '';
-      document.getElementById('modal-text').placeholder = 'Paste rows copied from Google Sheets here...';
-      const btn = document.getElementById('modal-btn');
-      btn.innerText = 'Parse Sheet Rows';
-      btn.onclick = function() {
-        parsePastedText(document.getElementById('modal-text').value);
-        closeModal();
-      };
-      document.getElementById('app-modal').style.display = 'flex';
-    }
-
-    function parsePastedText(text) {
-      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const parsed = [];
-      itemRegistry.clear();
-
-      lines.forEach((line, idx) => {
-        const cols = line.split('\t').length > 1 ? line.split('\t') : line.split(',');
-        const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
-        const title = clean[0] || '';
-        const genre = clean[2] || '';
-        let ready = (clean[5] || '').toUpperCase();
-        const pBass = clean[6] || '';
-        const horns = clean[7] || '';
-        const rawDur = clean[10] || '';
-        const isHol = isHolidayGenre(genre);
-
-        if (title && (ready === 'A' || ready === 'B' || isHol)) {
-          const song = {
-            id: 'pasted_' + idx,
-            title: title,
-            cleanTitle: title.toLowerCase().replace(/[^a-z0-9]/g, ''),
-            genre: genre || (isHol ? 'Holiday' : ''),
-            readiness: ready || 'A',
-            isHoliday: isHol,
-            philBass: pBass !== '' && pBass !== '0' && pBass.toLowerCase() !== 'no',
-            horns: horns !== '' && horns !== '0' && horns.toLowerCase() !== 'no',
-            duration: formatCardDuration(rawDur),
-            rawDuration: rawDur,
-            isCue: false
-          };
-          itemRegistry.set(song.id, song);
-          parsed.push(song);
-        }
-      });
-      if (parsed.length > 0) {
-        applyParsedData(parsed);
-      }
-    }
-
-    function closeModal() {
-      document.getElementById('app-modal').style.display = 'none';
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      initDnD();
-      resetState();
-    });
-  </script>
-</body>
-</html>
+      for (let i = 0
