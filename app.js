@@ -1,81 +1,175 @@
+// --- BULLETPROOF GVIZ PARSER & INGESTION ---
+
 function parseGVizPayload(gvizData) {
-  if (!gvizData || !gvizData.table) {
-    console.error('Malformed GViz data payload:', gvizData);
+  if (!gvizData || !gvizData.table || !gvizData.table.rows) {
+    console.error('GViz payload missing table or rows:', gvizData);
     return;
   }
 
-  const table = gvizData.table;
-  const cols = table.cols || [];
-  const rows = table.rows || [];
+  const rawRows = gvizData.table.rows;
+  if (rawRows.length === 0) {
+    console.warn('Google Sheet returned 0 rows.');
+    return;
+  }
 
-  console.log(`GViz loaded: ${cols.length} columns, ${rows.length} rows.`);
-
-  // Resolve column indexes dynamically by label/header, with numeric fallbacks
-  const findColIndex = (regex, fallbackIndex) => {
-    const idx = cols.findIndex(col => col && col.label && regex.test(col.label.trim()));
-    return idx !== -1 ? idx : fallbackIndex;
+  // Helper to extract clean text from any cell
+  const extractCellText = (cell) => {
+    if (!cell) return '';
+    if (cell.f !== undefined && cell.f !== null) return String(cell.f).trim();
+    if (cell.v !== undefined && cell.v !== null) return String(cell.v).trim();
+    return '';
   };
 
-  const colIdx = {
-    tune: findColIndex(/tune|title|song/i, 0),         // Col A
-    orig: findColIndex(/orig/i, 1),                    // Col B
-    wrkOn: findColIndex(/wrk\s*on/i, 2),               // Col C
-    genre: findColIndex(/genre/i, 3),                  // Col D
-    ready: findColIndex(/ready/i, 5),                  // Col F
-    pBass: findColIndex(/p\s*bass|phil/i, 6),           // Col G
-    horns: findColIndex(/horns?/i, 7),                 // Col H
-    estTime: findColIndex(/est\s*time|time|duration/i, 13) // Col N
+  // Determine column index map:
+  // 1. Try table.cols labels
+  // 2. If labels are blank, inspect the first data row (header row)
+  let colMap = {
+    tune: 0,   // Col A
+    genre: 3,  // Col D
+    ready: 5,  // Col F
+    pBass: 6,  // Col G
+    horns: 7,  // Col H
+    estTime: 13 // Col N
   };
 
-  console.log('Resolved column mapping:', colIdx);
+  let startIndex = 0;
+  const firstRowValues = (rawRows[0].c || []).map(extractCellText);
+  const headerRowHasLabels = firstRowValues.some(v => /tune|song|ready|genre/i.test(v));
+
+  if (headerRowHasLabels) {
+    // Row 0 is the text header row
+    startIndex = 1;
+    firstRowValues.forEach((val, idx) => {
+      const clean = val.toLowerCase();
+      if (/tune|title|song/.test(clean)) colMap.tune = idx;
+      else if (/genre/.test(clean)) colMap.genre = idx;
+      else if (/ready/.test(clean)) colMap.ready = idx;
+      else if (/p\s*bass|phil/.test(clean)) colMap.pBass = idx;
+      else if (/horn/.test(clean)) colMap.horns = idx;
+      else if (/time|duration|est/.test(clean)) colMap.estTime = idx;
+    });
+  } else if (gvizData.table.cols && gvizData.table.cols.some(c => c.label)) {
+    // GViz table.cols has labels
+    gvizData.table.cols.forEach((col, idx) => {
+      const clean = (col.label || '').toLowerCase();
+      if (/tune|title|song/.test(clean)) colMap.tune = idx;
+      else if (/genre/.test(clean)) colMap.genre = idx;
+      else if (/ready/.test(clean)) colMap.ready = idx;
+      else if (/p\s*bass|phil/.test(clean)) colMap.pBass = idx;
+      else if (/horn/.test(clean)) colMap.horns = idx;
+      else if (/time|duration|est/.test(clean)) colMap.estTime = idx;
+    });
+  }
+
+  console.log('Active Column Mapping:', colMap);
 
   allTracks = [];
 
-  rows.forEach((row, rowIndex) => {
-    const c = row.c || [];
+  for (let r = startIndex; r < rawRows.length; r++) {
+    const cells = rawRows[r].c || [];
 
-    // Safe cell extraction handling nulls, numbers, booleans, and formatted values
-    const getVal = (idx) => {
-      if (!c[idx]) return '';
-      if (c[idx].f !== undefined && c[idx].f !== null) return String(c[idx].f).trim();
-      if (c[idx].v !== undefined && c[idx].v !== null) return String(c[idx].v).trim();
-      return '';
-    };
+    const getVal = (idx) => extractCellText(cells[idx]);
 
-    const tune = getVal(colIdx.tune);
-    const orig = getVal(colIdx.orig);
-    const wrkOn = getVal(colIdx.wrkOn);
-    const genre = getVal(colIdx.genre);
-    const rawReady = getVal(colIdx.ready);
-    const pBass = getVal(colIdx.pBass);
-    const horns = getVal(colIdx.horns);
-    const estTime = getVal(colIdx.estTime);
+    const tune = getVal(colMap.tune);
+    const genre = getVal(colMap.genre);
+    const rawReady = getVal(colMap.ready);
+    const rawPBass = getVal(colMap.pBass);
+    const rawHorns = getVal(colMap.horns);
+    const estTime = getVal(colMap.estTime);
 
-    // Normalize readiness (clean hidden characters, spaces, uppercase)
-    const ready = rawReady.replace(/[^A-Za-z]/g, '').toUpperCase();
+    // Skip empty rows or accidental repeated headers
+    if (!tune || /^tune$/i.test(tune)) continue;
 
-    // Universal Ingestion Gate: Must have tune name AND readiness strictly 'A' or 'B'
-    if (!tune || (ready !== 'A' && ready !== 'B')) {
-      return;
+    // Normalization: clean whitespace/punctuation, get upper case
+    const readyClean = rawReady.replace(/[^a-zA-Z]/g, '').toUpperCase();
+
+    // STRICT INGESTION CRITERION:
+    // Only bring in if Readiness is strictly 'A' or 'B'
+    if (readyClean !== 'A' && readyClean !== 'B') {
+      continue;
     }
 
-    const holidayRegex = /(holiday|christmas|xmas|santa|noel|winter wonderland|jingle)/i;
-    const isHoliday = holidayRegex.test(genre) || holidayRegex.test(tune);
+    // Holiday Song Detection:
+    // Col D (Genre) contains 'holiday' or title contains seasonal cues
+    const isHoliday = /holiday/i.test(genre) || 
+                      /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(tune);
+
+    const isPBass = /^(y|yes|true|1)$/i.test(rawPBass);
+    const isHorns = /^(y|yes|true|1)$/i.test(rawHorns);
 
     allTracks.push({
-      id: `track-${rowIndex}`,
+      id: `track-${r}`,
       tune,
-      orig,
-      wrkOn,
       genre,
-      ready,
-      pBass: ['y', 'yes', 'true', '1'].includes(pBass.toLowerCase()),
-      horns: ['y', 'yes', 'true', '1'].includes(horns.toLowerCase()),
+      ready: readyClean,
+      pBass: isPBass,
+      horns: isHorns,
       estTime,
       isHoliday
     });
+  }
+
+  console.log(`Ingested ${allTracks.length} total tracks (A/B Ready). Standard: ${allTracks.filter(t => !t.isHoliday).length}, Holiday: ${allTracks.filter(t => t.isHoliday).length}`);
+  
+  renderCandidatePool();
+}
+
+// --- BULLETPROOF CANDIDATE POOL RENDERER ---
+
+function renderCandidatePool() {
+  const pool = document.getElementById('candidate-pool');
+  if (!pool) {
+    console.error('Candidate pool element (#candidate-pool) not found in DOM.');
+    return;
+  }
+
+  // Get set of all song IDs currently placed in sets to prevent duplicates
+  const placedTrackIds = new Set();
+  document.querySelectorAll('.set-column [data-track-id]').forEach(el => {
+    const id = el.getAttribute('data-track-id');
+    if (id) placedTrackIds.add(id);
   });
 
-  console.log(`Ingested ${allTracks.length} eligible candidates (Readiness A/B).`);
-  renderCandidatePool();
+  const visibleTracks = allTracks.filter(track => {
+    // 1. Exclude if already assigned to a set
+    if (placedTrackIds.has(track.id)) return false;
+
+    // 2. Holiday Visibility Logic:
+    // Regular songs are always allowed.
+    // Holiday songs are ONLY visible if showHoliday is toggled ON.
+    if (track.isHoliday && !activeFilters.showHoliday) {
+      return false;
+    }
+
+    // 3. Category & Readiness Filters
+    if (activeFilters.readyA && !activeFilters.readyB && track.ready !== 'A') return false;
+    if (activeFilters.readyB && !activeFilters.readyA && track.ready !== 'B') return false;
+    if (activeFilters.horns && !track.horns) return false;
+    if (activeFilters.pbass && !track.pBass) return false;
+
+    // 4. Live Search Box
+    if (activeFilters.search) {
+      const q = activeFilters.search.toLowerCase();
+      const matchTune = track.tune.toLowerCase().includes(q);
+      const matchGenre = track.genre.toLowerCase().includes(q);
+      if (!matchTune && !matchGenre) return false;
+    }
+
+    return true;
+  });
+
+  pool.innerHTML = '';
+
+  if (visibleTracks.length === 0) {
+    pool.innerHTML = `
+      <div class="p-6 text-center text-slate-400 text-sm">
+        No songs match the current filters. ${!activeFilters.showHoliday ? 'Click <strong>+ Holiday</strong> to include holiday repertoire.' : ''}
+      </div>
+    `;
+    return;
+  }
+
+  visibleTracks.forEach(track => {
+    pool.appendChild(createSongCard(track));
+  });
 }
