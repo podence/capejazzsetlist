@@ -3,98 +3,72 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cape Jazz & Blues - Setlist Builder</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Montserrat:wght@900&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-  <style>
-    :root {
-      --bg-main: #0b0f19;
-      --card-bg: #161f30;
-      --card-border: #23314c;
-      --col-bg: #101624;
-      --cape-periwinkle: #7C93D6;
-      --cape-tagline: #8fa3de;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --ready-a-bg: #064e3b;
-      --ready-a-txt: #34d399;
-      --ready-b-bg: #1e3a8a;
-      --ready-b-txt: #93c5fd;
-      --bass-bg: #581c87;
-      --bass-txt: #d8b4fe;
-      --horns-bg: #78350f;
-      --horns-txt: #fcd34d;
-      --cue-bg: #371923;
-      --cue-border: #6d2335;
-      --cue-txt: #fda4af;
-      --sub-bg: #0d1320;
+  <title>Cape Jazz &amp; Blues Setlist Builder</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SortableJS CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <!-- docx-js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
 
-      --genre-jazz: #ffffff;
-      --genre-blues: #7dd3fc;
-      --genre-holiday: #fca5a5;
-      --genre-other: #fef08a;
-    }
+  <!-- Visual Error Boundary Banner -->
+  <div id="error-banner" class="hidden bg-rose-600 text-white px-4 py-3 fixed top-0 left-0 right-0 z-50 shadow-xl border-b border-rose-400">
+    <div class="max-w-7xl mx-auto flex items-start justify-between">
+      <div>
+        <p class="font-bold tracking-wide">Application Runtime Error</p>
+        <p id="error-msg" class="text-sm font-mono mt-1 opacity-95"></p>
+      </div>
+      <button onclick="document.getElementById('error-banner').classList.add('hidden')" class="px-2 py-1 text-sm bg-rose-800 hover:bg-rose-900 rounded font-bold">Dismiss</button>
+    </div>
+  </div>
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-      background-color: var(--bg-main);
-      color: var(--text-main);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
+  <!-- Header / Controls Bar -->
+  <header class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-30 shadow-md">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Title Input -->
+      <div class="flex items-center gap-3">
+        <span class="text-xl">🎷</span>
+        <input 
+          id="gig-title" 
+          type="text" 
+          value="Set List Name" 
+          class="bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded px-3 py-1.5 font-bold text-lg text-white focus:outline-none transition w-64 md:w-80"
+          placeholder="Gig / Setlist Name"
+        />
+      </div>
 
-    header {
-      background: #080c14;
-      border-bottom: 1px solid #1e293b;
-      padding: 12px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btn-reload-sheet" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200">
+          🔄 Sync Sheet
+        </button>
+        <button id="btn-open-paste-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200">
+          📋 Paste TSV
+        </button>
+        <button id="btn-open-import-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200">
+          📥 Import Text
+        </button>
 
-    .brand-container {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    .brand-lockup {
-      position: relative;
-      display: inline-block;
-      line-height: 0.9;
-    }
-    .brand-cape {
-      font-family: 'Montserrat', sans-serif;
-      font-size: 36px;
-      font-weight: 900;
-      color: var(--cape-periwinkle);
-      letter-spacing: -1px;
-      display: block;
-    }
-    .brand-script {
-      font-family: 'Caveat', cursive;
-      font-size: 28px;
-      font-weight: 700;
-      color: #ffffff;
-      position: absolute;
-      top: 12px;
-      left: 16px;
-      text-shadow: 2px 2px 0 #080c14, -2px -2px 0 #080c14;
-      white-space: nowrap;
-      pointer-events: none;
-    }
-    .brand-tagline {
-      font-family: 'Montserrat', sans-serif;
-      font-size: 8px;
-      font-weight: 800;
-      letter-spacing: 1.5px;
-      color: var(--cape-tagline);
-      text-transform: uppercase;
-      margin-top: 4px;
-      display: block;
-    }
+        <!-- Export Dropdown -->
+        <div class="relative inline-block text-left">
+          <button id="btn-export-dropdown" class="btn-action bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center gap-2">
+            <span>📄 Export Word</span>
+            <span class="text-xs">▼</span>
+          </button>
+          <div id="export-menu" class="hidden absolute right-0 mt-2 w-52 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl py-1 z-40">
+            <button id="btn-export-standard" class="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition">
+              Standard Format <span class="block text-xs text-slate-400">Aptos 13.5pt, clean</span>
+            </button>
+            <button id="btn-export-geoff" class="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition border-t border-slate-800">
+              Geoff's Format <span class="block text-xs text-slate-400">Calibri 22/18pt Bold/Red</span>
+            </button>
+          </div>
+        </div>
+      </div>
