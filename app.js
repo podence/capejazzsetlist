@@ -27,39 +27,36 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 
   // APPLICATION STATE
   const state = {
-    masterList: [],  // Master backup of all parsed songs
-    pool: [],        // Filtered/Active candidate pool
-    set1: [],        // Active Set 1 items
-    set1_res: [],    // Reserve Set 1 items
-    set2: [],        // Active Set 2 items
-    set2_res: [],    // Reserve Set 2 items
-    activeFilter: 'all',
-    holidayHighlight: false
+    masterList: [],         // Pristine backup of all fetched songs
+    pool: [],               // Currently remaining candidate pool
+    set1: [],               // Active Set 1
+    set1_res: [],           // Reserve Set 1
+    set2: [],               // Active Set 2
+    set2_res: [],           // Reserve Set 2
+    activeCategory: 'all',  // 'all' | 'readyA' | 'readyB' | 'phil' | 'horns'
+    includeHoliday: false   // Holiday modifier: false = excluded; true = included
   };
 
-  // DEFENSIVE NORMALIZERS
+  // PARSERS & HELPERS
   function parseDurationToSec(rawVal, formattedVal) {
-    // Prefer formatted string like "0:02:45" or "2:45"
     let str = (formattedVal || rawVal || '').toString().trim();
     if (!str) return 0;
 
-    // Remove any text notes or accidental spaces
     str = str.replace(/[^\d:]/g, '');
     if (!str) return 0;
 
     const parts = str.split(':').map(p => parseInt(p, 10) || 0);
 
-    // If "0:02:40" (hours:mins:secs from Google Sheets time format)
+    // Format "0:02:40"
     if (parts.length === 3) {
       const [h, m, s] = parts;
       if (h === 0) return (m * 60) + s;
       return (h * 3600) + (m * 60) + s;
     }
-    // If "2:40" or "02:40" (mins:secs)
+    // Format "2:40"
     if (parts.length === 2) {
       return (parts[0] * 60) + parts[1];
     }
-    // Pure decimal minutes (e.g., 3.5 -> 210 sec)
     const floatMins = parseFloat(str);
     if (!isNaN(floatMins)) {
       return Math.round(floatMins * 60);
@@ -74,18 +71,18 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   }
 
+  function isTrueFlag(val) {
+    if (!val) return false;
+    const str = String(val).trim().toUpperCase();
+    return str === 'Y' || str === 'YES' || str === 'W' || str === '1' || str === 'TRUE';
+  }
+
   function getGenreClass(genre = '') {
     const g = String(genre).toLowerCase();
     if (g.includes('holiday') || g.includes('christmas') || g.includes('xmas')) return 'title-holiday';
     if (g.includes('jazz')) return 'title-jazz';
     if (g.includes('blues')) return 'title-blues';
     return 'title-other';
-  }
-
-  function isTrueFlag(val) {
-    if (!val) return false;
-    const str = String(val).trim().toUpperCase();
-    return str === 'Y' || str === 'YES' || str === 'W' || str === '1' || str === 'TRUE';
   }
 
   function normalizeRow(flatCells, rawCells) {
@@ -99,7 +96,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     const philBassVal = flatCells[6] || '';
     const hornsVal = flatCells[7] || '';
 
-    // Duration extraction with formatted string fallback
     const durRaw = flatCells[10];
     const durFormatted = rawCells && rawCells[10] ? (rawCells[10].f || rawCells[10].v) : '';
     const durationSec = parseDurationToSec(durRaw, durFormatted);
@@ -107,7 +103,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     const isHoliday = /holiday|christmas|xmas/i.test(genre);
     const isReady = (readiness === 'A' || readiness === 'B');
 
-    // Rule: Ingest if (Readiness is A or B) OR Genre contains Holiday/Christmas/Xmas
+    // Filter rule: Ready A/B OR Holiday tunes
     if (!isReady && !isHoliday) return null;
 
     return {
@@ -118,6 +114,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       philBass: isTrueFlag(philBassVal),
       horns: isTrueFlag(hornsVal),
       durationSec: durationSec,
+      isHoliday: isHoliday,
       isCue: false
     };
   }
@@ -151,7 +148,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 
       script.onerror = function () {
         cleanup();
-        reject(new Error("Network error fetching Google Sheet via GViz."));
+        reject(new Error("Network error loading sheet."));
       };
 
       function cleanup() {
@@ -163,7 +160,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     });
   }
 
-  // CARD CREATION
+  // CARD COMPONENT
   function createCardElement(item, listKey) {
     const card = document.createElement('div');
     card.dataset.id = item.id;
@@ -182,12 +179,9 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     }
 
     const titleColorClass = getGenreClass(item.genre);
-    const isHoliday = /holiday|christmas|xmas/i.test(item.genre || '');
-    
-    card.className = `card-song flex items-center justify-between text-xs ${isHoliday ? 'genre-holiday-card' : ''}`;
-    
     const formattedTime = item.durationSec > 0 ? formatSecToMMSS(item.durationSec) : '--:--';
 
+    card.className = `card-song flex items-center justify-between text-xs ${item.isHoliday ? 'genre-holiday-card' : ''}`;
     card.innerHTML = `
       <div class="min-w-0 pr-2">
         <p class="font-medium text-sm truncate ${titleColorClass}">${escapeHtml(item.title || 'Untitled')}</p>
@@ -232,14 +226,21 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     if (!poolContainer) return;
 
     poolContainer.innerHTML = '';
-    
+
+    // CORE HOLIDAY LOGIC:
+    // If includeHoliday is FALSE, holiday songs are completely excluded.
+    // If includeHoliday is TRUE, holiday songs are included and participate in base category filtering.
     const filtered = state.pool.filter(item => {
-      if (state.activeFilter === 'readyA') return item.readiness === 'A';
-      if (state.activeFilter === 'readyB') return item.readiness === 'B';
-      if (state.activeFilter === 'phil') return Boolean(item.philBass);
-      if (state.activeFilter === 'horns') return Boolean(item.horns);
-      if (state.activeFilter === 'holiday') return /holiday|christmas|xmas/i.test(item.genre || '');
-      return true;
+      if (!state.includeHoliday && item.isHoliday) {
+        return false;
+      }
+
+      if (state.activeCategory === 'readyA') return item.readiness === 'A';
+      if (state.activeCategory === 'readyB') return item.readiness === 'B';
+      if (state.activeCategory === 'phil') return Boolean(item.philBass);
+      if (state.activeCategory === 'horns') return Boolean(item.horns);
+      
+      return true; // 'all'
     });
 
     filtered.forEach(item => {
@@ -320,9 +321,9 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
   }
 
   function resetAll() {
-    if (!confirm("Are you sure you want to reset all sets back to the pool?")) return;
+    if (!confirm("Reset all sets back to the candidate pool?")) return;
     
-    // Restore pool to master clean list
+    // Return all items back into pool from the master list
     state.pool = JSON.parse(JSON.stringify(state.masterList));
     state.set1 = [];
     state.set1_res = [];
@@ -335,7 +336,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     renderAll();
   }
 
-  // SORTABLE INITIALIZATION
+  // DRAG & DROP INITIALIZATION
   function initSortableContainers() {
     const listMap = [
       { id: 'pool-list', key: 'pool' },
@@ -388,7 +389,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     });
   }
 
-  // GLOBAL CARD EVENT DELEGATION
+  // CARD EVENTS
   document.addEventListener('click', function (e) {
     const removeBtn = e.target.closest('.btn-remove');
     if (removeBtn) {
@@ -407,31 +408,31 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
 
   // FILTER CONTROLS
   function initFilterChips() {
-    const chips = document.querySelectorAll('.chip');
-    chips.forEach(chip => {
+    // Category chips (exclusive radio behavior)
+    const categoryChips = document.querySelectorAll('.chip[data-filter]');
+    categoryChips.forEach(chip => {
       chip.addEventListener('click', () => {
-        const f = chip.dataset.filter;
-        
-        if (f === 'holiday') {
-          state.holidayHighlight = !state.holidayHighlight;
-          chip.classList.toggle('active', state.holidayHighlight);
-          document.body.classList.toggle('holiday-highlight', state.holidayHighlight);
-          return;
-        }
-
-        chips.forEach(c => {
-          if (c.dataset.filter !== 'holiday') c.classList.remove('active');
-        });
+        categoryChips.forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
-        state.activeFilter = f;
+        state.activeCategory = chip.dataset.filter;
         renderPool();
       });
     });
+
+    // Holiday toggle modifier (independent toggle button)
+    const holidayBtn = document.getElementById('btn-holiday-toggle');
+    if (holidayBtn) {
+      holidayBtn.addEventListener('click', () => {
+        state.includeHoliday = !state.includeHoliday;
+        holidayBtn.classList.toggle('active', state.includeHoliday);
+        document.body.classList.toggle('holiday-highlight', state.includeHoliday);
+        renderPool();
+      });
+    }
   }
 
   // MODALS & BUTTONS
   function initModals() {
-    // Reset Button
     const resetBtn = document.getElementById('btn-reset');
     if (resetBtn) resetBtn.onclick = resetAll;
 
@@ -512,6 +513,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
           durationSec: 0,
           philBass: false,
           horns: false,
+          isHoliday: /holiday|christmas|xmas/i.test(cleanTitle),
           isCue: cleanTitle.startsWith('+') || /cue|switch/i.test(cleanTitle)
         });
       }
@@ -520,15 +522,16 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     renderAll();
   }
 
-  // WORD DOC EXPORT
+  // WORD DOC EXPORT (Defensive library resolution)
   async function exportDocx(format) {
     try {
-      if (!window.docx) {
-        alert("docx library is still loading. Please check your network connection and try again.");
+      const docxLib = window.docx;
+      if (!docxLib || !docxLib.Document) {
+        alert("The docx export library could not be reached. Please check your internet connection.");
         return;
       }
 
-      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
+      const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = docxLib;
       const gigTitle = document.getElementById('gig-title').value.trim() || 'Setlist';
       const isGeoff = (format === 'geoff');
       const fontName = isGeoff ? 'Calibri' : 'Aptos';
@@ -632,7 +635,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      alert("Error generating Word document: " + err.message);
+      alert("Error generating Word doc: " + err.message);
       console.error(err);
     }
   }
@@ -660,7 +663,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       state.pool = items;
       renderAll();
     } catch (err) {
-      console.warn("Could not load from GViz directly. Use 'Paste TSV' button.", err);
+      console.warn("GViz fetch issue. App ready for TSV paste.", err);
       renderAll();
     }
   }
