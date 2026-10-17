@@ -25,7 +25,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
   };
 
   const state = {
-    masterList: [],         // All ingested songs meeting Readiness A or B strictly
+    masterList: [],         // All ingested songs meeting Readiness A or B
     pool: [],               // Active pool items available to pick
     set1: [],               // Set 1 items
     set1_res: [],           // Set 1 Reserve items
@@ -99,8 +99,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     return 'title-other';
   }
 
-  // FIXED-COLUMN NORMALIZER
-  // Col A (0): Title | Col C (2): Genre | Col F (5): Readiness | Col G (6): Phil Bass | Col H (7): Horns | Col K (10): Est Time
+  // FIXED-COLUMN NORMALIZER MATCHING LIVE SHEET
   function normalizeRow(cells) {
     if (!Array.isArray(cells) || cells.length === 0) return null;
 
@@ -110,30 +109,49 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
       return String(c.v).trim();
     };
 
+    // Col A (0): Title
     const title = getVal(0);
     if (!title || title.toLowerCase() === 'tune' || title === '`') return null;
 
-    // Strict Gate: Col F (index 5) MUST be 'A' or 'B'. Rating in Col E is ignored.
+    // Col F (index 5): Readiness (Strictly 'A' or 'B', ignoring Rating in Col E)
     const readiness = getVal(5).toUpperCase();
     if (readiness !== 'A' && readiness !== 'B') {
       return null;
     }
 
-    const genre = getVal(2);
-    const isHoliday = genre.toLowerCase().includes('holiday');
+    // Genre: Check Col D (index 3) first; fallback to Col C (index 2)
+    const genreColD = getVal(3);
+    const genreColC = getVal(2);
+    const genre = genreColD || genreColC || 'Other';
+    
+    // Holiday check across Genre and Title
+    const isHoliday = genre.toLowerCase().includes('holiday') || 
+                      /christmas|xmas|winter wonderland|santa|jingle|frosty/i.test(title);
 
+    // Col G (index 6): Phil Bass
     const philBass = isTrueFlag(getVal(6));
+
+    // Col H (index 7): Horns
     const horns = isTrueFlag(getVal(7));
 
-    const cellK = cells[10];
-    const durRaw = getVal(10);
-    const durFormatted = (cellK && typeof cellK === 'object') ? (cellK.f || cellK.v || '') : '';
-    const durationSec = parseDurationToSec(durRaw, durFormatted);
+    // Duration: Check Col N (index 13) or Col K (index 10)
+    let durationSec = 0;
+    const candidateIndices = [13, 10, 11, 14];
+    for (let idx of candidateIndices) {
+      const cell = cells[idx];
+      const raw = getVal(idx);
+      const formatted = (cell && typeof cell === 'object') ? (cell.f || cell.v || '') : '';
+      const parsed = parseDurationToSec(raw, formatted);
+      if (parsed > 0) {
+        durationSec = parsed;
+        break;
+      }
+    }
 
     return {
       id: 'song_' + Math.random().toString(36).substring(2, 9),
       title: title,
-      genre: isHoliday ? 'Holiday' : (genre || 'Other'),
+      genre: isHoliday ? 'Holiday' : genre,
       readiness: readiness,
       philBass: philBass,
       horns: horns,
@@ -257,7 +275,7 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     const availableSongs = state.masterList.filter(s => !assignedIds.has(s.id));
 
     const filtered = availableSongs.filter(item => {
-      // Holiday Inclusion: If false, completely exclude holiday songs
+      // Holiday Filter: Exclude Holiday songs unless toggle is active
       if (!state.includeHoliday && item.isHoliday) {
         return false;
       }
@@ -549,7 +567,6 @@ window.onerror = function (msg, url, lineNo, columnNo, error) {
     renderAll();
   }
 
-  // WORD EXPORT (Standard: Aptos, Black, No Numbers; Geoff: Calibri, Red/Blue, No Numbers)
   function exportWordDoc(format) {
     const gigTitle = document.getElementById('gig-title').value.trim() || 'Setlist';
     const isGeoff = (format === 'geoff');
