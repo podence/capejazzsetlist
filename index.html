@@ -9,8 +9,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SortableJS CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-  <!-- docx-js CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
+  <!-- Reliable Standalone docx CDN -->
+  <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
   
   <!-- Custom Styles -->
   <link rel="stylesheet" href="style.css">
@@ -39,20 +39,23 @@
           id="gig-title" 
           type="text" 
           value="Set List Name" 
-          class="bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded px-3 py-1.5 font-bold text-lg text-white focus:outline-none transition w-64 md:w-80"
+          class="bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded px-3 py-1.5 font-bold text-lg text-white focus:outline-none transition w-60 md:w-80"
           placeholder="Gig / Setlist Name"
         />
       </div>
 
       <!-- Action Buttons -->
       <div class="flex flex-wrap items-center gap-2">
-        <button id="btn-reload-sheet" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200">
+        <button id="btn-reset" class="btn-action bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-200 font-semibold shadow-sm">
+          ↺ Reset All
+        </button>
+        <button id="btn-reload-sheet" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Re-sync latest rows directly from Google Sheet">
           🔄 Sync Sheet
         </button>
-        <button id="btn-open-paste-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200">
+        <button id="btn-open-paste-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Manually paste TSV rows if offline">
           📋 Paste TSV
         </button>
-        <button id="btn-open-import-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200">
+        <button id="btn-open-import-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Parse plain text setlist">
           📥 Import Text
         </button>
 
@@ -93,14 +96,20 @@
           </div>
         </div>
 
-        <!-- Filter Chips -->
-        <div class="flex flex-wrap gap-1.5 text-xs">
-          <button data-filter="all" class="chip active">All</button>
-          <button data-filter="readyA" class="chip">Ready A</button>
-          <button data-filter="readyB" class="chip">Ready B</button>
-          <button data-filter="phil" class="chip">Phil Bass</button>
-          <button data-filter="horns" class="chip">Horns</button>
-          <button data-filter="holiday" id="filter-holiday" class="chip chip-holiday">Holiday</button>
+        <!-- Filter Chips: Modifier Holiday chip separated from base category chips -->
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <div class="flex gap-1.5">
+            <button data-filter="all" class="chip active">All</button>
+            <button data-filter="readyA" class="chip">Ready A</button>
+            <button data-filter="readyB" class="chip">Ready B</button>
+            <button data-filter="phil" class="chip">Phil Bass</button>
+            <button data-filter="horns" class="chip">Horns</button>
+          </div>
+          <span class="text-slate-600 font-mono">|</span>
+          <!-- Holiday Additive Toggle -->
+          <button id="btn-holiday-toggle" class="chip chip-holiday">
+            🎅 + Holiday
+          </button>
         </div>
       </div>
 
