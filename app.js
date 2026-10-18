@@ -1,13 +1,9 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct GViz Data Ingestion + LocalStorage Persistence + Reliable Geoff Word Export
+ * app.js - Direct CSV Ingestion matching index.html IDs
  */
 
-const STORAGE_KEY = 'capejazz_saved_state';
-const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
-const SHEET_GID = '477864766';
-
-// Global error catcher to surface errors onto the top banner
+// Visual error catcher: surface errors directly to the on-screen error banner
 window.addEventListener('error', (event) => {
   const banner = document.getElementById('error-banner');
   const msg = document.getElementById('error-msg');
@@ -16,6 +12,9 @@ window.addEventListener('error', (event) => {
     msg.innerText = `${event.message} (${event.filename ? event.filename.split('/').pop() : 'script'}:${event.lineno})`;
   }
 });
+
+const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
+const SHEET_GID = '477864766';
 
 // Global app handlers exposed immediately before any DOM event runs
 window.app = {
@@ -27,12 +26,8 @@ window.app = {
 
     target.appendChild(createCueCard(text.trim()));
     updateSetStats();
-    saveCurrentState();
   },
-  updateStats: () => {
-    updateSetStats();
-    saveCurrentState();
-  }
+  updateStats: () => updateSetStats()
 };
 
 // State
@@ -40,11 +35,12 @@ let allSongs = [];
 let activeFilter = 'all';
 let showHoliday = false;
 
-// Initialize on DOM Ready
+// Initialize as soon as DOM is ready or immediately if already loaded
 function startApp() {
+  setDefaultTitle();
   initSortable();
   setupEventListeners();
-  loadSheetGViz();
+  loadSheetCSV();
 }
 
 if (document.readyState === 'loading') {
@@ -64,153 +60,132 @@ function setDefaultTitle() {
   titleInput.value = `Set List ${m}/${d}/${yy}`;
 }
 
-// 2. Fetch Data using GViz JSONP (bypasses browser CORS & redirects)
-function loadSheetGViz() {
+// 2. Fetch CSV Directly from Google Sheets
+async function loadSheetCSV() {
   const pool = document.getElementById('pool-list');
   if (pool) {
-    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Connecting to Google Sheet...</div>';
+    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Loading songs from Google Sheet...</div>';
   }
 
-  // Remove any previous gviz script tag
-  const existing = document.getElementById('gviz-jsonp');
-  if (existing) existing.remove();
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 
-  const script = document.createElement('script');
-  script.id = 'gviz-jsonp';
-  script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}`;
-  script.onerror = () => {
+  try {
+    const res = await fetch(csvUrl);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: Ensure Google Sheet is shared with 'Anyone with the link can view'`);
+    }
+    const csvText = await res.text();
+    parseCSVAndIngest(csvText);
+  } catch (err) {
+    console.error('Sheet fetch error:', err);
     if (pool) {
       pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/80 border border-rose-800 rounded text-xs leading-relaxed">
-        <strong>Connection Error:</strong> Failed to load Google Sheet. Verify the sheet is shared as "Anyone with link can view".
+        <strong>Error loading songs:</strong><br>${err.message}
       </div>`;
     }
-  };
-  document.body.appendChild(script);
+    const banner = document.getElementById('error-banner');
+    const msg = document.getElementById('error-msg');
+    if (banner && msg) {
+      banner.classList.remove('hidden');
+      msg.innerText = `Google Sheet Load Failure: ${err.message}`;
+    }
+  }
 }
 
-// 3. GViz JSONP Response Handler
-window.handleGvizResponse = function(response) {
-  try {
-    if (!response || !response.table || !response.table.rows) {
-      throw new Error('Malformed data table returned from Google Sheet');
-    }
+// 3. Robust CSV Parser
+function parseCSV(text) {
+  const lines = [];
+  let row = [''];
+  let inQuotes = false;
 
-    const rows = response.table.rows;
-    allSongs = [];
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
 
-    // Identify header row and map columns dynamically
-    let colTitle = 0;
-    let colGenre = 2;
-    let colReady = 5;
-    let colPBass = 6;
-    let colHorns = 7;
-    let colTime = 10;
-    let dataStartIndex = 3;
-
-    // Scan first 5 rows to locate header positions if possible
-    for (let r = 0; r < Math.min(5, rows.length); r++) {
-      const rowCells = rows[r].c || [];
-      for (let c = 0; c < rowCells.length; c++) {
-        const val = (rowCells[c]?.v || '').toString().toLowerCase().trim();
-        if (val === 'title' || val.includes('song title')) {
-          colTitle = c;
-          dataStartIndex = r + 1;
-        } else if (val === 'genre') {
-          colGenre = c;
-        } else if (val === 'ready') {
-          colReady = c;
-        } else if (val.includes('bass') || val.includes('phil')) {
-          colPBass = c;
-        } else if (val.includes('horn')) {
-          colHorns = c;
-        } else if (val.includes('time') || val.includes('duration')) {
-          colTime = c;
-        }
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        row[row.length - 1] += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
       }
-    }
-
-    for (let i = dataStartIndex; i < rows.length; i++) {
-      const cells = rows[i].c || [];
-
-      const getCellStr = (idx) => {
-        if (!cells[idx]) return '';
-        return (cells[idx].f || cells[idx].v || '').toString().trim();
-      };
-
-      const title = getCellStr(colTitle);
-      const genre = getCellStr(colGenre);
-      const rawReady = getCellStr(colReady).toUpperCase();
-      const rawPBass = getCellStr(colPBass);
-      const rawHorns = getCellStr(colHorns);
-      const rawTime = getCellStr(colTime);
-
-      // STRICT RULE: Must have a Title and Ready must be strictly 'A' or 'B'
-      if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
-        continue;
-      }
-
-      const isHoliday = /holiday/i.test(genre) ||
-                        /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
-
-      allSongs.push({
-        id: `song_${i}_${title.replace(/[^a-zA-Z0-9]/g, '')}`,
-        title,
-        genre,
-        ready: rawReady,
-        pBass: rawPBass !== '' && rawPBass !== '0' && rawPBass.toLowerCase() !== 'no',
-        horns: rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no',
-        duration: rawTime || '3:00',
-        isHoliday
-      });
-    }
-
-    console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
-
-    const hasRestored = restoreSavedState();
-    if (!hasRestored) {
-      setDefaultTitle();
-    }
-
-    renderPool();
-    updateSetStats();
-  } catch (err) {
-    console.error('GViz ingestion error:', err);
-    const pool = document.getElementById('pool-list');
-    if (pool) {
-      pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/80 border border-rose-800 rounded text-xs leading-relaxed">
-        <strong>Ingestion Error:</strong><br>${err.message}
-      </div>`;
+    } else if (char === ',' && !inQuotes) {
+      row.push('');
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      lines.push(row);
+      row = [''];
+    } else {
+      row[row.length - 1] += char;
     }
   }
-};
+  if (row.length > 1 || row[0] !== '') lines.push(row);
+  return lines;
+}
+
+// 4. Ingest & Gate Data
+function parseCSVAndIngest(csvText) {
+  const rows = parseCSV(csvText);
+  allSongs = [];
+
+  // Data starts at Sheet Row 4 (index 3). Row index 2 contains headers.
+  for (let i = 3; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length === 0) continue;
+
+    const title = (r[0] || '').trim();
+    const genre = (r[2] || '').trim();
+    const rawReady = (r[5] || '').trim().toUpperCase();
+    const rawPBass = (r[6] || '').trim();
+    const rawHorns = (r[7] || '').trim();
+    const rawTime = (r[10] || '').trim();
+
+    // STRICT CRITERION: Title must exist AND Ready must be strictly 'A' or 'B'
+    if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
+      continue;
+    }
+
+    const isHoliday = /holiday/i.test(genre) ||
+                      /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
+
+    allSongs.push({
+      id: `song_${i}_${title.replace(/[^a-zA-Z0-9]/g, '')}`,
+      title,
+      genre,
+      ready: rawReady,
+      pBass: rawPBass !== '' && rawPBass !== '0' && rawPBass.toLowerCase() !== 'no',
+      horns: rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no',
+      duration: rawTime || '3:00',
+      isHoliday
+    });
+  }
+
+  console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
+  renderPool();
+}
 
 // Determine genre CSS class
 function getGenreTitleClass(song) {
   if (song.isHoliday) return 'title-holiday';
   const g = (song.genre || '').toLowerCase();
-  if (g.includes('jazz')) return 'title-jazz'[cite: 1];
-  if (g.includes('blues')) return 'title-blues'[cite: 1];
-  return 'title-other'[cite: 1];
+  if (g.includes('jazz')) return 'title-jazz';
+  if (g.includes('blues')) return 'title-blues';
+  return 'title-other';
 }
 
-// 4. Render Candidate Cards to #pool-list
+// 5. Render Candidate Cards to #pool-list
 function renderPool() {
   const pool = document.getElementById('pool-list');
   const countBadge = document.getElementById('pool-count');
   if (!pool) return;
 
-  const assigned = new Set();
-  document.querySelectorAll('#set1-list .song-card, #set1-res-list .song-card, #set2-list .song-card, #set2-res-list .song-card').forEach(el => {
-    const id = el.getAttribute('data-id');
-    const title = (el.getAttribute('data-title') || '').toLowerCase().trim();
-    if (id && !id.startsWith('custom_')) assigned.add(id);
-    if (title) assigned.add(title);
+  const assignedIds = new Set();
+  document.querySelectorAll('#set1-list [data-id], #set1-res-list [data-id], #set2-list [data-id], #set2-res-list [data-id]').forEach(el => {
+    assignedIds.add(el.getAttribute('data-id'));
   });
 
   const visibleSongs = allSongs.filter(song => {
-    if (assigned.has(song.id)) return false;
-    if (assigned.has(song.title.toLowerCase().trim())) return false;
-
+    if (assignedIds.has(song.id)) return false;
     if (song.isHoliday && !showHoliday) return false;
 
     if (activeFilter === 'readyA' && song.ready !== 'A') return false;
@@ -232,26 +207,21 @@ function renderPool() {
   }
 }
 
-// 5. Song Card Builder
+// 6. Song Card Builder
 function createSongCard(song) {
   const card = document.createElement('div');
   const holidayCardClass = song.isHoliday ? 'genre-holiday-card' : '';
   card.className = `song-card card-song bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors ${holidayCardClass}`;
-  card.setAttribute('data-id', song.id || `custom_${Date.now()}`);
-  card.setAttribute('data-title', song.title || '');
-  card.setAttribute('data-duration', song.duration || '3:00');
-  card.setAttribute('data-genre', song.genre || '');
-  card.setAttribute('data-ready', song.ready || '');
-  card.setAttribute('data-pbass', song.pBass ? 'true' : 'false');
-  card.setAttribute('data-horns', song.horns ? 'true' : 'false');
-  card.setAttribute('data-isholiday', song.isHoliday ? 'true' : 'false');
+  card.setAttribute('data-id', song.id);
+  card.setAttribute('data-title', song.title);
+  card.setAttribute('data-duration', song.duration);
 
   const titleClass = getGenreTitleClass(song);
 
   card.innerHTML = `
     <div class="flex items-center justify-between mb-1.5 pointer-events-none">
-      <span class="${titleClass} font-semibold">${escapeHtml(song.title || '')}</span>
-      <span class="font-mono text-[11px] text-slate-400">${song.duration || '3:00'}</span>
+      <span class="${titleClass} font-semibold">${escapeHtml(song.title)}</span>
+      <span class="font-mono text-[11px] text-slate-400">${song.duration}</span>
     </div>
     <div class="flex items-center justify-between text-[10px] pointer-events-none">
       <div class="flex items-center gap-1.5">
@@ -282,7 +252,6 @@ function createCueCard(text) {
     e.stopPropagation();
     card.remove();
     updateSetStats();
-    saveCurrentState();
   });
 
   return card;
@@ -298,7 +267,7 @@ function escapeHtml(str) {
   }[tag] || tag));
 }
 
-// 6. SortableJS Drag & Drop
+// 7. SortableJS Drag & Drop
 function initSortable() {
   if (typeof Sortable === 'undefined') {
     console.warn('SortableJS library not loaded.');
@@ -317,20 +286,19 @@ function initSortable() {
     new Sortable(container, {
       group: 'setlist-builder',
       animation: 150,
-      ghostClass: 'sortable-ghost'[cite: 1],
-      chosenClass: 'sortable-drag'[cite: 1],
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-drag',
       onEnd: (evt) => {
         updateSetStats();
         if (evt.to.id === 'pool-list' || evt.from.id === 'pool-list') {
           renderPool();
         }
-        saveCurrentState();
       }
     });
   });
 }
 
-// 7. Timings & Counts
+// 8. Timings & Counts
 function updateSetStats() {
   calculateColumnStats('set1-list', 'set1-count', 'set1-time');
   calculateColumnStats('set2-list', 'set2-count', 'set2-time');
@@ -368,140 +336,22 @@ function calculateColumnStats(containerId, countId, timeId) {
   }
 }
 
-// 8. LocalStorage Persistence Engine
-function saveCurrentState() {
-  try {
-    const serializeContainer = (id) => {
-      const container = document.getElementById(id);
-      if (!container) return [];
-      const items = [];
-      container.querySelectorAll('.song-card').forEach(c => {
-        if (c.getAttribute('data-cue') === 'true') {
-          items.push({ type: 'cue', title: c.getAttribute('data-title') });
-        } else {
-          items.push({
-            type: 'song',
-            id: c.getAttribute('data-id'),
-            title: c.getAttribute('data-title'),
-            duration: c.getAttribute('data-duration'),
-            genre: c.getAttribute('data-genre'),
-            ready: c.getAttribute('data-ready'),
-            pBass: c.getAttribute('data-pbass') === 'true',
-            horns: c.getAttribute('data-horns') === 'true',
-            isHoliday: c.getAttribute('data-isholiday') === 'true'
-          });
-        }
-      });
-      return items;
-    };
-
-    const set1 = serializeContainer('set1-list');
-    const set1Res = serializeContainer('set1-res-list');
-    const set2 = serializeContainer('set2-list');
-    const set2Res = serializeContainer('set2-res-list');
-
-    if (set1.length === 0 && set1Res.length === 0 && set2.length === 0 && set2Res.length === 0) {
-      localStorage.removeItem(STORAGE_KEY);
-      return;
-    }
-
-    const state = {
-      title: document.getElementById('gig-title')?.value || '',
-      set1,
-      set1Res,
-      set2,
-      set2Res
-    };
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (err) {
-    console.warn('LocalStorage save failed:', err);
-  }
-}
-
-function restoreSavedState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
-    const state = JSON.parse(raw);
-    if (!state) return false;
-
-    const hasItems = (Array.isArray(state.set1) && state.set1.length > 0) ||
-                     (Array.isArray(state.set1Res) && state.set1Res.length > 0) ||
-                     (Array.isArray(state.set2) && state.set2.length > 0) ||
-                     (Array.isArray(state.set2Res) && state.set2Res.length > 0);
-
-    if (!hasItems) {
-      localStorage.removeItem(STORAGE_KEY);
-      return false;
-    }
-
-    if (state.title) {
-      const gigTitle = document.getElementById('gig-title');
-      if (gigTitle) gigTitle.value = state.title;
-    }
-
-    const restoreContainer = (id, items) => {
-      const container = document.getElementById(id);
-      if (!container || !Array.isArray(items)) return;
-      container.innerHTML = '';
-      items.forEach(item => {
-        if (item.type === 'cue') {
-          container.appendChild(createCueCard(item.title));
-        } else {
-          const knownSong = allSongs.find(s => s.id === item.id || s.title.toLowerCase().trim() === (item.title || '').toLowerCase().trim());
-          if (knownSong) {
-            container.appendChild(createSongCard(knownSong));
-          } else {
-            container.appendChild(createSongCard(item));
-          }
-        }
-      });
-    };
-
-    restoreContainer('set1-list', state.set1);
-    restoreContainer('set1-res-list', state.set1Res);
-    restoreContainer('set2-list', state.set2);
-    restoreContainer('set2-res-list', state.set2Res);
-
-    return true;
-  } catch (err) {
-    console.warn('LocalStorage restore failed:', err);
-    localStorage.removeItem(STORAGE_KEY);
-    return false;
-  }
-}
-
 // 9. Event Listeners & UI Hooks
 function setupEventListeners() {
-  const titleInput = document.getElementById('gig-title');
-  if (titleInput) {
-    titleInput.addEventListener('input', () => saveCurrentState());
-  }
-
   const syncBtn = document.getElementById('btn-reload-sheet');
   if (syncBtn) {
-    syncBtn.addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_KEY);
-      loadSheetGViz();
-    });
+    syncBtn.addEventListener('click', () => loadSheetCSV());
   }
 
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      const confirmed = confirm("Are you sure you want to reset all sets? This will clear your current layout.");
-      if (!confirmed) return;
-
       document.getElementById('set1-list').innerHTML = '';
       document.getElementById('set1-res-list').innerHTML = '';
       document.getElementById('set2-list').innerHTML = '';
       document.getElementById('set2-res-list').innerHTML = '';
-
-      localStorage.removeItem(STORAGE_KEY);
-      setDefaultTitle();
-      renderPool();
       updateSetStats();
+      renderPool();
     });
   }
 
@@ -545,6 +395,7 @@ function setupEventListeners() {
     btnGeoff.addEventListener('click', () => exportWordDoc('geoff'));
   }
 
+  // Setup Plain Text Import Modal
   setupImportModal();
 }
 
@@ -584,6 +435,7 @@ function parseAndImportText(text) {
   let currentTarget = null;
   let parsedTitle = null;
 
+  // Clear existing sets before importing
   document.getElementById('set1-list').innerHTML = '';
   document.getElementById('set1-res-list').innerHTML = '';
   document.getElementById('set2-list').innerHTML = '';
@@ -593,6 +445,7 @@ function parseAndImportText(text) {
     const line = lines[i];
     const upper = line.toUpperCase();
 
+    // 1. Check for Set / Section Headers
     if (upper.includes('SET ONE') || upper.includes('SET 1')) {
       currentTarget = document.getElementById('set1-list');
       continue;
@@ -602,6 +455,7 @@ function parseAndImportText(text) {
       continue;
     }
     if (upper.includes('RESERVE') || upper.includes('ALTERNATES')) {
+      // Default to Set 2 reserve if we're past Set 1, otherwise Set 1 reserve
       if (currentTarget === document.getElementById('set1-list')) {
         currentTarget = document.getElementById('set1-res-list');
       } else {
@@ -610,6 +464,7 @@ function parseAndImportText(text) {
       continue;
     }
 
+    // 2. Text encountered BEFORE any set header is treated as the Setlist / Gig Title
     if (!currentTarget) {
       if (!parsedTitle) {
         parsedTitle = line;
@@ -619,15 +474,19 @@ function parseAndImportText(text) {
       continue;
     }
 
+    // 3. Ignore summary lines (e.g. "15 songs 60 mins.", "15 Songs – 60 mins.", "12 songs", "45 mins")
     if (/\b\d+\s*songs?\b/i.test(line) || /\b\d+\s*mins?\.?\b/i.test(line)) {
       continue;
     }
 
+    // 4. Strip leading numbering, bullets, dashes (e.g., "1. Song", "- Song", "1 ) Song")
     const cleanedLine = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
     if (!cleanedLine) continue;
 
     const lowerCleaned = cleanedLine.toLowerCase();
 
+    // 5. Cues logic:
+    // Anything starting with "switch", "cue:", or explicitly designated cues
     const isExplicitCue = /^switch\b/i.test(cleanedLine) ||
                           /^cue\s*:/i.test(cleanedLine) ||
                           lowerCleaned === 'acoustic guitar' ||
@@ -639,9 +498,12 @@ function parseAndImportText(text) {
       continue;
     }
 
+    // 6. Song Matching:
+    // Try exact alphanumeric match against allSongs from the sheet
     const normLine = lowerCleaned.replace(/[^a-z0-9]/g, '');
     let matchedSong = allSongs.find(s => s.title.toLowerCase().replace(/[^a-z0-9]/g, '') === normLine);
 
+    // If no direct alphanumeric match, try containment match (e.g. "Fly Me to the Moon" matching "Fly Me To The Moon (In Other Words)")
     if (!matchedSong && normLine.length > 5) {
       matchedSong = allSongs.find(s => {
         const normSheet = s.title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -652,6 +514,7 @@ function parseAndImportText(text) {
     if (matchedSong) {
       currentTarget.appendChild(createSongCard(matchedSong));
     } else {
+      // 7. Unknown song: Default to treating as a regular SONG rather than a cue!
       const fallbackSong = {
         id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         title: cleanedLine,
@@ -668,7 +531,6 @@ function parseAndImportText(text) {
 
   updateSetStats();
   renderPool();
-  saveCurrentState();
 }
 
 // 11. Word Document Generation
@@ -772,31 +634,25 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
-  const titleSectionHtml = format === 'geoff'
-    ? `<p align="center" style="text-align: center; margin-top: 0in; margin-bottom: 18pt;">
-         <span style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000;">
-           ${escapeHtml(gigTitle)}
-         </span>
-       </p>`
-    : `<p style="font-family: 'Aptos', sans-serif; color: #000000; font-size: 16pt; font-weight: bold; margin-top: 0in; margin-bottom: 14pt;">
-         ${escapeHtml(gigTitle)}
-       </p>`;
+  const titleStyle = format === 'geoff'
+    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
+    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
 
   const docContent = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
       <meta charset='utf-8'>
       <title>${escapeHtml(gigTitle)}</title>
       <style>
         @page { size: 8.5in 11in; margin: 0.75in; }
-        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; margin: 0; padding: 0; }
+        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
         table { width: 100%; border-collapse: collapse; }
         td { width: 50%; vertical-align: top; padding-right: 20pt; }
         td + td { padding-right: 0; padding-left: 20pt; }
       </style>
     </head>
     <body>
-      ${titleSectionHtml}
+      <div style="${titleStyle}">${escapeHtml(gigTitle)}</div>
       <table><tr><td>${col1Html}</td><td>${col2Html}</td></tr></table>
     </body>
     </html>
