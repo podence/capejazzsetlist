@@ -1,6 +1,6 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Geoff's Title Text Effect
+ * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Reliable Geoff Word Title
  */
 
 const STORAGE_KEY = 'capejazz_saved_state';
@@ -732,60 +732,31 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
-  // Geoff's Title: Red fill (#D60000), white outline/stroke halo, and soft bottom-right drop shadow
+  // Direct, rock-solid title without fragile conditional MSO wrappers
   let titleSectionHtml = '';
   if (format === 'geoff') {
     titleSectionHtml = `
-      <div style="text-align: center; margin-bottom: 16pt; line-height: 1.1;">
-        <!--[if mso]>
-        <v:shapetype id="WordTitleGeoff" coordsize="21600,21600" o:spt="136" adj="10800" path="m@7,l@8,m@5,21600l@6,21600e">
-          <v:stroke joinstyle="round" />
-          <v:textpath on="t" fitshape="t" />
-          <v:path textpathok="t" />
-        </v:shapetype>
-        <v:shape type="#WordTitleGeoff" style="width:520pt;height:42pt;" fillcolor="#D60000" strokecolor="#FFFFFF" strokeweight="1.5pt">
-          <v:shadow on="t" type="single" color="#7F7F7F" opacity="0.65" offset="2.5pt,2.5pt" />
-          <v:textpath style="font-family:'Calibri',sans-serif;font-size:30pt;font-weight:bold;" string="${escapeHtml(gigTitle)}" />
-        </v:shape>
-        <![endif]-->
-        <!--[if !mso]><!-->
-        <div style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000; -webkit-text-stroke: 1.25px #ffffff; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 3px rgba(0,0,0,0.45); letter-spacing: 0.5px;">
+      <p align="center" style="text-align: center; margin-top: 0in; margin-bottom: 18pt; line-height: 120%;">
+        <span style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000; text-shadow: 2px 2px 2px #7F7F7F; mso-effects-shadow-color: #7F7F7F; mso-effects-shadow-offset-x: 2pt; mso-effects-shadow-offset-y: 2pt; -webkit-text-stroke: 1px #ffffff;">
           ${escapeHtml(gigTitle)}
-        </div>
-        <!--<![endif]-->
-      </div>
+        </span>
+      </p>
     `;
   } else {
     titleSectionHtml = `
-      <div style="font-family: 'Aptos', sans-serif; color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;">
+      <p style="font-family: 'Aptos', sans-serif; color: #000000; font-size: 16pt; font-weight: bold; margin-top: 0in; margin-bottom: 14pt;">
         ${escapeHtml(gigTitle)}
-      </div>
+      </p>
     `;
   }
 
   const docContent = `
-    <html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
       <meta charset='utf-8'>
       <title>${escapeHtml(gigTitle)}</title>
-      <!--[if gte mso 9]>
-      <xml>
-        <o:OfficeDocumentSettings>
-          <o:PixelsPerInch>96</o:PixelsPerInch>
-        </o:OfficeDocumentSettings>
-        <w:WordDocument>
-          <w:View>Print</w:View>
-          <w:Zoom>100</w:Zoom>
-          <w:DoNotOptimizeForBrowser/>
-        </w:WordDocument>
-      </xml>
-      <![endif]-->
       <style>
         @page { size: 8.5in 11in; margin: 0.75in; }
-        v\\:* { behavior: url(#default#VML); display: inline-block; }
-        o\\:* { behavior: url(#default#VML); }
-        w\\:* { behavior: url(#default#VML); }
-        .shape { behavior: url(#default#VML); }
         body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; margin: 0; padding: 0; }
         table { width: 100%; border-collapse: collapse; }
         td { width: 50%; vertical-align: top; padding-right: 20pt; }
