@@ -6,6 +6,20 @@
 const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
 const SHEET_GID = '477864766';
 
+// Global app handlers exposed immediately before any DOM event runs
+window.app = {
+  addCustomCue: (setKey) => {
+    const text = prompt("Enter stage cue (e.g. 'Switch guitars', 'Acoustic Guitar', 'Break'):", "Switch guitars");
+    if (!text || !text.trim()) return;
+    const target = setKey === 'set1' ? document.getElementById('set1-list') : document.getElementById('set2-list');
+    if (!target) return;
+
+    target.appendChild(createCueCard(text.trim()));
+    updateSetStats();
+  },
+  updateStats: () => updateSetStats()
+};
+
 // State
 let allSongs = [];
 let activeFilter = 'all';
@@ -95,13 +109,6 @@ function parseCSVAndIngest(csvText) {
     const r = rows[i];
     if (!r || r.length === 0) continue;
 
-    // Verified Sheet Column Mapping:
-    // Col 0: Tune
-    // Col 2: Genre
-    // Col 5: Ready
-    // Col 6: P Bass
-    // Col 7: Horns
-    // Col 10: Est Time
     const title = (r[0] || '').trim();
     const genre = (r[2] || '').trim();
     const rawReady = (r[5] || '').trim().toUpperCase();
@@ -139,7 +146,6 @@ function renderPool() {
   const countBadge = document.getElementById('pool-count');
   if (!pool) return;
 
-  // Track cards already assigned to set columns
   const assignedIds = new Set();
   document.querySelectorAll('#set1-list [data-id], #set1-res-list [data-id], #set2-list [data-id], #set2-res-list [data-id]').forEach(el => {
     assignedIds.add(el.getAttribute('data-id'));
@@ -148,10 +154,8 @@ function renderPool() {
   const visibleSongs = allSongs.filter(song => {
     if (assignedIds.has(song.id)) return false;
 
-    // Holiday filter logic
     if (song.isHoliday && !showHoliday) return false;
 
-    // Category / Readiness filters
     if (activeFilter === 'readyA' && song.ready !== 'A') return false;
     if (activeFilter === 'readyB' && song.ready !== 'B') return false;
     if (activeFilter === 'phil' && !song.pBass) return false;
@@ -171,7 +175,7 @@ function renderPool() {
   }
 }
 
-// 6. Song Card HTML Builder
+// 6. Song Card Builder
 function createSongCard(song) {
   const card = document.createElement('div');
   card.className = 'song-card bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors';
@@ -197,6 +201,26 @@ function createSongCard(song) {
       ${song.genre ? `<span class="text-slate-500 italic">${escapeHtml(song.genre)}</span>` : ''}
     </div>
   `;
+  return card;
+}
+
+// Cue Card Builder
+function createCueCard(text) {
+  const card = document.createElement('div');
+  card.className = 'song-card card-cue bg-rose-950/40 border border-rose-800 text-rose-200 p-2 rounded text-xs select-none cursor-grab flex items-center justify-between';
+  card.setAttribute('data-cue', 'true');
+  card.setAttribute('data-title', text);
+  card.innerHTML = `
+    <span class="italic font-semibold pointer-events-none">📌 ${escapeHtml(text)}</span>
+    <button type="button" class="btn-remove-cue text-rose-400 hover:text-rose-200 ml-2 font-bold cursor-pointer">✕</button>
+  `;
+
+  card.querySelector('.btn-remove-cue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    card.remove();
+    updateSetStats();
+  });
+
   return card;
 }
 
@@ -241,25 +265,6 @@ function initSortable() {
       }
     });
   });
-
-  // Preset drag cue: + Switch guitars
-  const presetCue = document.getElementById('preset-cue-container');
-  if (presetCue) {
-    new Sortable(presetCue, {
-      group: {
-        name: 'setlist-builder',
-        pull: 'clone',
-        put: false
-      },
-      sort: false,
-      animation: 150,
-      onClone: (evt) => {
-        const orig = evt.item;
-        orig.setAttribute('data-title', 'Switch guitars');
-        orig.setAttribute('data-cue', 'true');
-      }
-    });
-  }
 }
 
 // 8. Timings & Counts
@@ -302,13 +307,11 @@ function calculateColumnStats(containerId, countId, timeId) {
 
 // 9. Event Listeners & UI Hooks
 function setupEventListeners() {
-  // Sync Sheet button
   const syncBtn = document.getElementById('btn-reload-sheet');
   if (syncBtn) {
     syncBtn.addEventListener('click', () => loadSheetCSV());
   }
 
-  // Reset All button
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
@@ -321,7 +324,6 @@ function setupEventListeners() {
     });
   }
 
-  // Filter Chips (All, Ready A, Ready B, Phil Bass, Horns)
   document.querySelectorAll('[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
@@ -331,7 +333,6 @@ function setupEventListeners() {
     });
   });
 
-  // Holiday Toggle Button
   const holidayBtn = document.getElementById('btn-holiday-toggle');
   if (holidayBtn) {
     holidayBtn.addEventListener('click', () => {
@@ -341,7 +342,6 @@ function setupEventListeners() {
     });
   }
 
-  // Export Word dropdown toggles
   const exportBtn = document.getElementById('btn-export-dropdown');
   const exportMenu = document.getElementById('export-menu');
   if (exportBtn && exportMenu) {
@@ -352,13 +352,11 @@ function setupEventListeners() {
     document.addEventListener('click', () => exportMenu.classList.add('hidden'));
   }
 
-  // Export Standard
   const btnStandard = document.getElementById('btn-export-standard');
   if (btnStandard) {
     btnStandard.addEventListener('click', () => exportWordDoc('standard'));
   }
 
-  // Export Geoff's format
   const btnGeoff = document.getElementById('btn-export-geoff');
   if (btnGeoff) {
     btnGeoff.addEventListener('click', () => exportWordDoc('geoff'));
@@ -390,10 +388,7 @@ function exportWordDoc(format = 'standard') {
       }
     });
 
-    return {
-      count: songCount,
-      mins: Math.round(totalSec / 60)
-    };
+    return { count: songCount, mins: Math.round(totalSec / 60) };
   };
 
   const buildSetHtml = (listId, resId, label) => {
@@ -403,28 +398,24 @@ function exportWordDoc(format = 'standard') {
 
     const stats = getSetStatsData(listId);
 
-    // Header styling: Black, 18pt font, underlined for Geoff
     const headerStyle = format === 'geoff'
       ? 'color: #000000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 6pt; text-transform: uppercase;'
       : 'color: #000000; font-size: 14pt; font-weight: bold; text-transform: uppercase; margin-bottom: 6pt;';
 
     let html = `<div style="${headerStyle}">${label}</div>`;
 
-    // Song & cue styling
     mainCards.forEach(c => {
       const isCue = c.getAttribute('data-cue') === 'true';
       const title = c.getAttribute('data-title') || c.innerText.trim();
 
       if (isCue) {
         if (format === 'geoff') {
-          // Blue and underlined cue/break
-          html += `<div style="color: #1F4E79; text-decoration: underline; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         } else {
           html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         }
       } else {
         if (format === 'geoff') {
-          // Grayish-blue, non-bold for Geoff's format
           html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         } else {
           html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
@@ -432,19 +423,17 @@ function exportWordDoc(format = 'standard') {
       }
     });
 
-    // Total at bottom of each active set
     if (stats.count > 0) {
       if (format === 'geoff') {
-        html += `<div style="color: #C00000; font-size: 15pt; font-weight: bold; margin-top: 8pt; margin-bottom: 8pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+        html += `<div style="color: #C00000; font-size: 15pt; font-weight: normal; margin-top: 8pt; margin-bottom: 8pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
       } else {
-        html += `<div style="color: #000000; font-size: 13.5pt; margin-top: 6pt; margin-bottom: 6pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+        html += `<div style="color: #000000; font-size: 13.5pt; font-weight: normal; margin-top: 6pt; margin-bottom: 6pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
       }
     }
 
-    // Reserve Section
     if (resCards.length > 0) {
       const resHeaderStyle = format === 'geoff'
-        ? 'color: #C00000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-top: 10pt; margin-bottom: 4pt;'
+        ? 'color: #C00000; font-size: 18pt; font-weight: normal; text-decoration: none; margin-top: 10pt; margin-bottom: 4pt;'
         : 'color: #000000; font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt;';
 
       html += `<div style="${resHeaderStyle}">Reserve</div>`;
@@ -455,7 +444,7 @@ function exportWordDoc(format = 'standard') {
 
         if (isCue) {
           if (format === 'geoff') {
-            html += `<div style="color: #1F4E79; text-decoration: underline; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+            html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
           } else {
             html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
           }
@@ -475,9 +464,8 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
-  // Centered, red with shadow for Geoff's format
   const titleStyle = format === 'geoff'
-    ? 'color: #C00000; font-size: 26pt; font-weight: bold; text-align: center; margin-bottom: 16pt; text-shadow: 2px 2px 3px rgba(0,0,0,0.35);'
+    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
     : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
 
   const docContent = `
@@ -510,25 +498,3 @@ function exportWordDoc(format = 'standard') {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-
-// 11. Expose Global app namespace for inline HTML button handlers
-window.app = {
-  addCustomCue: (setKey) => {
-    const text = prompt("Enter stage cue (e.g. 'Switch guitars', 'Acoustic Guitar'):", "Switch guitars");
-    if (!text) return;
-    const target = setKey === 'set1' ? document.getElementById('set1-list') : document.getElementById('set2-list');
-    if (!target) return;
-
-    const cueCard = document.createElement('div');
-    cueCard.className = 'song-card card-cue bg-rose-950/40 border border-rose-800 text-rose-200 p-2 rounded text-xs select-none cursor-grab flex items-center justify-between';
-    cueCard.setAttribute('data-cue', 'true');
-    cueCard.setAttribute('data-title', text);
-    cueCard.innerHTML = `
-      <span class="italic font-semibold">📌 ${escapeHtml(text)}</span>
-      <button onclick="this.parentElement.remove(); window.app.updateStats();" class="text-rose-400 hover:text-rose-200 ml-2 font-bold">✕</button>
-    `;
-    target.appendChild(cueCard);
-    updateSetStats();
-  },
-  updateStats: () => updateSetStats()
-};
