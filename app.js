@@ -3,6 +3,16 @@
  * app.js - Direct CSV Ingestion matching index.html IDs
  */
 
+// Visual error catcher: surface errors directly to the on-screen error banner
+window.addEventListener('error', (event) => {
+  const banner = document.getElementById('error-banner');
+  const msg = document.getElementById('error-msg');
+  if (banner && msg) {
+    banner.classList.remove('hidden');
+    msg.innerText = `${event.message} (${event.filename ? event.filename.split('/').pop() : 'script'}:${event.lineno})`;
+  }
+});
+
 const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
 const SHEET_GID = '477864766';
 
@@ -25,13 +35,19 @@ let allSongs = [];
 let activeFilter = 'all';
 let showHoliday = false;
 
-// Initialize on DOM Ready
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize as soon as DOM is ready or immediately if already loaded
+function startApp() {
   setDefaultTitle();
   initSortable();
   setupEventListeners();
   loadSheetCSV();
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startApp);
+} else {
+  startApp();
+}
 
 // 1. Default Title: "Set List M/D/YY"
 function setDefaultTitle() {
@@ -48,20 +64,31 @@ function setDefaultTitle() {
 async function loadSheetCSV() {
   const pool = document.getElementById('pool-list');
   if (pool) {
-    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs">Loading songs from Google Sheet...</div>';
+    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Loading songs from Google Sheet...</div>';
   }
 
+  // Direct CSV export URL
   const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 
   try {
     const res = await fetch(csvUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status} - Check sheet sharing permissions`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: Ensure Google Sheet is shared with 'Anyone with the link can view'`);
+    }
     const csvText = await res.text();
     parseCSVAndIngest(csvText);
   } catch (err) {
     console.error('Sheet fetch error:', err);
     if (pool) {
-      pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/60 border border-rose-800 rounded text-xs">Failed to load songs: ${err.message}</div>`;
+      pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/80 border border-rose-800 rounded text-xs leading-relaxed">
+        <strong>Error loading songs:</strong><br>${err.message}
+      </div>`;
+    }
+    const banner = document.getElementById('error-banner');
+    const msg = document.getElementById('error-msg');
+    if (banner && msg) {
+      banner.classList.remove('hidden');
+      msg.innerText = `Google Sheet Load Failure: ${err.message}`;
     }
   }
 }
@@ -264,7 +291,6 @@ function initSortable() {
       chosenClass: 'sortable-drag',
       onEnd: (evt) => {
         updateSetStats();
-        // If a card was dragged into or out of the candidate pool, re-render the pool to respect current filters & clean IDs
         if (evt.to.id === 'pool-list' || evt.from.id === 'pool-list') {
           renderPool();
         }
@@ -456,7 +482,7 @@ function parseAndImportText(text) {
   renderPool();
 }
 
-// 11. Word Document Generation (Standard & Geoff's Format, Unnumbered)
+// 11. Word Document Generation
 function exportWordDoc(format = 'standard') {
   const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
 
@@ -527,4 +553,67 @@ function exportWordDoc(format = 'standard') {
     if (resCards.length > 0) {
       const resHeaderStyle = format === 'geoff'
         ? 'color: #C00000; font-size: 18pt; font-weight: normal; text-decoration: none; margin-top: 10pt; margin-bottom: 4pt;'
-        :
+        : 'color: #000000; font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt;';
+
+      html += `<div style="${resHeaderStyle}">Reserve</div>`;
+
+      resCards.forEach(c => {
+        const isCue = c.getAttribute('data-cue') === 'true';
+        const title = c.getAttribute('data-title') || c.innerText.trim();
+
+        if (isCue) {
+          if (format === 'geoff') {
+            html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          } else {
+            html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          }
+        } else {
+          if (format === 'geoff') {
+            html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          } else {
+            html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          }
+        }
+      });
+    }
+
+    return html;
+  };
+
+  const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
+  const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
+
+  const titleStyle = format === 'geoff'
+    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
+    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
+
+  const docContent = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+      <meta charset='utf-8'>
+      <title>${escapeHtml(gigTitle)}</title>
+      <style>
+        @page { size: 8.5in 11in; margin: 0.75in; }
+        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
+        table { width: 100%; border-collapse: collapse; }
+        td { width: 50%; vertical-align: top; padding-right: 20pt; }
+        td + td { padding-right: 0; padding-left: 20pt; }
+      </style>
+    </head>
+    <body>
+      <div style="${titleStyle}">${escapeHtml(gigTitle)}</div>
+      <table><tr><td>${col1Html}</td><td>${col2Html}</td></tr></table>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${gigTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${format}.doc`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
