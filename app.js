@@ -1,6 +1,6 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Reliable Geoff Word Title
+ * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Clean Red Word Export Title
  */
 
 const STORAGE_KEY = 'capejazz_saved_state';
@@ -176,9 +176,9 @@ function parseCSVAndIngest(csvText) {
 function getGenreTitleClass(song) {
   if (song.isHoliday) return 'title-holiday';
   const g = (song.genre || '').toLowerCase();
-  if (g.includes('jazz')) return 'title-jazz';
-  if (g.includes('blues')) return 'title-blues';
-  return 'title-other';
+  if (g.includes('jazz')) return 'title-jazz'[cite: 1];
+  if (g.includes('blues')) return 'title-blues'[cite: 1];
+  return 'title-other'[cite: 1];
 }
 
 // 5. Render Candidate Cards to #pool-list
@@ -300,8 +300,8 @@ function initSortable() {
     new Sortable(container, {
       group: 'setlist-builder',
       animation: 150,
-      ghostClass: 'sortable-ghost',
-      chosenClass: 'sortable-drag',
+      ghostClass: 'sortable-ghost'[cite: 1],
+      chosenClass: 'sortable-drag'[cite: 1],
       onEnd: (evt) => {
         updateSetStats();
         if (evt.to.id === 'pool-list' || evt.from.id === 'pool-list') {
@@ -732,23 +732,16 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
-  // Direct, rock-solid title without fragile conditional MSO wrappers
-  let titleSectionHtml = '';
-  if (format === 'geoff') {
-    titleSectionHtml = `
-      <p align="center" style="text-align: center; margin-top: 0in; margin-bottom: 18pt; line-height: 120%;">
-        <span style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000; text-shadow: 2px 2px 2px #7F7F7F; mso-effects-shadow-color: #7F7F7F; mso-effects-shadow-offset-x: 2pt; mso-effects-shadow-offset-y: 2pt; -webkit-text-stroke: 1px #ffffff;">
-          ${escapeHtml(gigTitle)}
-        </span>
-      </p>
-    `;
-  } else {
-    titleSectionHtml = `
-      <p style="font-family: 'Aptos', sans-serif; color: #000000; font-size: 16pt; font-weight: bold; margin-top: 0in; margin-bottom: 14pt;">
-        ${escapeHtml(gigTitle)}
-      </p>
-    `;
-  }
+  // Geoff's format: centered, bold red, clean and robust
+  const titleSectionHtml = format === 'geoff'
+    ? `<p align="center" style="text-align: center; margin-top: 0in; margin-bottom: 18pt;">
+         <span style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000;">
+           ${escapeHtml(gigTitle)}
+         </span>
+       </p>`
+    : `<p style="font-family: 'Aptos', sans-serif; color: #000000; font-size: 16pt; font-weight: bold; margin-top: 0in; margin-bottom: 14pt;">
+         ${escapeHtml(gigTitle)}
+       </p>`;
 
   const docContent = `
     <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
