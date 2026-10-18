@@ -47,8 +47,6 @@ function setDefaultTitle() {
 // 2. Fetch CSV Directly from Google Sheets
 async function loadSheetCSV() {
   const pool = document.getElementById('pool-list');
-  const countBadge = document.getElementById('pool-count');
-
   if (pool) {
     pool.innerHTML = '<div class="p-3 text-slate-400 text-xs">Loading songs from Google Sheet...</div>';
   }
@@ -140,6 +138,15 @@ function parseCSVAndIngest(csvText) {
   renderPool();
 }
 
+// Determine genre CSS class
+function getGenreTitleClass(song) {
+  if (song.isHoliday) return 'title-holiday';
+  const g = (song.genre || '').toLowerCase();
+  if (g.includes('jazz')) return 'title-jazz';
+  if (g.includes('blues')) return 'title-blues';
+  return 'title-other';
+}
+
 // 5. Render Candidate Cards to #pool-list
 function renderPool() {
   const pool = document.getElementById('pool-list');
@@ -153,7 +160,6 @@ function renderPool() {
 
   const visibleSongs = allSongs.filter(song => {
     if (assignedIds.has(song.id)) return false;
-
     if (song.isHoliday && !showHoliday) return false;
 
     if (activeFilter === 'readyA' && song.ready !== 'A') return false;
@@ -178,16 +184,17 @@ function renderPool() {
 // 6. Song Card Builder
 function createSongCard(song) {
   const card = document.createElement('div');
-  card.className = 'song-card bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors';
+  const holidayCardClass = song.isHoliday ? 'genre-holiday-card' : '';
+  card.className = `song-card card-song bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors ${holidayCardClass}`;
   card.setAttribute('data-id', song.id);
   card.setAttribute('data-title', song.title);
   card.setAttribute('data-duration', song.duration);
 
-  const titleColor = song.isHoliday ? 'text-[#fca5a5] font-semibold' : 'text-slate-100 font-medium';
+  const titleClass = getGenreTitleClass(song);
 
   card.innerHTML = `
     <div class="flex items-center justify-between mb-1.5 pointer-events-none">
-      <span class="${titleColor}">${escapeHtml(song.title)}</span>
+      <span class="${titleClass} font-semibold">${escapeHtml(song.title)}</span>
       <span class="font-mono text-[11px] text-slate-400">${song.duration}</span>
     </div>
     <div class="flex items-center justify-between text-[10px] pointer-events-none">
@@ -253,14 +260,13 @@ function initSortable() {
     new Sortable(container, {
       group: 'setlist-builder',
       animation: 150,
-      ghostClass: 'opacity-40',
-      chosenClass: 'bg-slate-800',
-      onEnd: () => {
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-drag',
+      onEnd: (evt) => {
         updateSetStats();
-        const poolCount = document.getElementById('pool-count');
-        const poolList = document.getElementById('pool-list');
-        if (poolCount && poolList) {
-          poolCount.innerText = poolList.querySelectorAll('.song-card').length;
+        // If a card was dragged into or out of the candidate pool, re-render the pool to respect current filters & clean IDs
+        if (evt.to.id === 'pool-list' || evt.from.id === 'pool-list') {
+          renderPool();
         }
       }
     });
@@ -338,10 +344,12 @@ function setupEventListeners() {
     holidayBtn.addEventListener('click', () => {
       showHoliday = !showHoliday;
       holidayBtn.classList.toggle('active', showHoliday);
+      document.body.classList.toggle('holiday-highlight', showHoliday);
       renderPool();
     });
   }
 
+  // Export Dropdown
   const exportBtn = document.getElementById('btn-export-dropdown');
   const exportMenu = document.getElementById('export-menu');
   if (exportBtn && exportMenu) {
@@ -361,9 +369,94 @@ function setupEventListeners() {
   if (btnGeoff) {
     btnGeoff.addEventListener('click', () => exportWordDoc('geoff'));
   }
+
+  // Setup Plain Text Import Modal
+  setupImportModal();
 }
 
-// 10. Word Document Generation
+// 10. Plain Text Import Modal Logic
+function setupImportModal() {
+  const importModal = document.getElementById('import-modal');
+  const openBtn = document.getElementById('btn-open-import-modal');
+  const closeBtn = document.getElementById('btn-close-import');
+  const runBtn = document.getElementById('btn-run-import');
+  const textarea = document.getElementById('import-textarea');
+
+  if (!importModal || !openBtn || !closeBtn || !runBtn || !textarea) return;
+
+  openBtn.addEventListener('click', () => {
+    textarea.value = '';
+    importModal.classList.remove('hidden');
+    textarea.focus();
+  });
+
+  closeBtn.addEventListener('click', () => {
+    importModal.classList.add('hidden');
+  });
+
+  runBtn.addEventListener('click', () => {
+    const rawText = textarea.value.trim();
+    if (!rawText) {
+      importModal.classList.add('hidden');
+      return;
+    }
+    parseAndImportText(rawText);
+    importModal.classList.add('hidden');
+  });
+}
+
+function parseAndImportText(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let currentTarget = document.getElementById('set1-list');
+
+  // Clear existing sets before importing
+  document.getElementById('set1-list').innerHTML = '';
+  document.getElementById('set1-res-list').innerHTML = '';
+  document.getElementById('set2-list').innerHTML = '';
+  document.getElementById('set2-res-list').innerHTML = '';
+
+  lines.forEach(line => {
+    const upper = line.toUpperCase();
+
+    // Section headers
+    if (upper.includes('SET ONE') || upper.includes('SET 1')) {
+      currentTarget = document.getElementById('set1-list');
+      return;
+    }
+    if (upper.includes('SET TWO') || upper.includes('SET 2')) {
+      currentTarget = document.getElementById('set2-list');
+      return;
+    }
+    if (upper.includes('RESERVE') || upper.includes('ALTERNATES')) {
+      if (currentTarget === document.getElementById('set1-list')) {
+        currentTarget = document.getElementById('set1-res-list');
+      } else {
+        currentTarget = document.getElementById('set2-res-list');
+      }
+      return;
+    }
+
+    // Strip leading numbering, bullets, dashes (e.g., "1. Song", "- Song", "1 ) Song")
+    const cleanedLine = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
+    if (!cleanedLine) return;
+
+    // Direct match against known songs (case-insensitive)
+    const normalizedInput = cleanedLine.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const matchedSong = allSongs.find(s => s.title.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedInput);
+
+    if (matchedSong) {
+      currentTarget.appendChild(createSongCard(matchedSong));
+    } else {
+      // If it doesn't match a song title in the pool, treat as a stage cue
+      currentTarget.appendChild(createCueCard(cleanedLine));
+    }
+  });
+
+  updateSetStats();
+  renderPool();
+}
+
+// 11. Word Document Generation (Standard & Geoff's Format, Unnumbered)
 function exportWordDoc(format = 'standard') {
   const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
 
@@ -434,67 +527,4 @@ function exportWordDoc(format = 'standard') {
     if (resCards.length > 0) {
       const resHeaderStyle = format === 'geoff'
         ? 'color: #C00000; font-size: 18pt; font-weight: normal; text-decoration: none; margin-top: 10pt; margin-bottom: 4pt;'
-        : 'color: #000000; font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt;';
-
-      html += `<div style="${resHeaderStyle}">Reserve</div>`;
-
-      resCards.forEach(c => {
-        const isCue = c.getAttribute('data-cue') === 'true';
-        const title = c.getAttribute('data-title') || c.innerText.trim();
-
-        if (isCue) {
-          if (format === 'geoff') {
-            html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
-          } else {
-            html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
-          }
-        } else {
-          if (format === 'geoff') {
-            html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
-          } else {
-            html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
-          }
-        }
-      });
-    }
-
-    return html;
-  };
-
-  const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
-  const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
-
-  const titleStyle = format === 'geoff'
-    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
-    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
-
-  const docContent = `
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-    <head>
-      <meta charset='utf-8'>
-      <title>${escapeHtml(gigTitle)}</title>
-      <style>
-        @page { size: 8.5in 11in; margin: 0.75in; }
-        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
-        table { width: 100%; border-collapse: collapse; }
-        td { width: 50%; vertical-align: top; padding-right: 20pt; }
-        td + td { padding-right: 0; padding-left: 20pt; }
-      </style>
-    </head>
-    <body>
-      <div style="${titleStyle}">${escapeHtml(gigTitle)}</div>
-      <table><tr><td>${col1Html}</td><td>${col2Html}</td></tr></table>
-    </body>
-    </html>
-  `;
-
-  const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${gigTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${format}.doc`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
+        :
