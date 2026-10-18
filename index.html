@@ -57,4 +57,126 @@
         <button id="btn-reload-sheet" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Re-sync latest rows directly from Google Sheet">
           🔄 Sync Sheet
         </button>
-        <button id="btn-open-import-modal"
+        <button id="btn-open-import-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Parse plain text setlist">
+          📥 Import Text
+        </button>
+
+        <!-- Export Dropdown -->
+        <div class="relative inline-block text-left">
+          <button id="btn-export-dropdown" class="btn-action bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center gap-2">
+            <span>📄 Export Word</span>
+            <span class="text-xs">▼</span>
+          </button>
+          <div id="export-menu" class="hidden absolute right-0 mt-2 w-52 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl py-1 z-40">
+            <button id="btn-export-standard" class="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition">
+              Standard Format <span class="block text-xs text-slate-400">Aptos 13.5pt, clean</span>
+            </button>
+            <button id="btn-export-geoff" class="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition border-t border-slate-800">
+              Geoff's Format <span class="block text-xs text-slate-400">Calibri, styled</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Board Grid -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
+    
+    <!-- Column 1: Candidates Pool -->
+    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-175px)]">
+      <div class="pb-3 border-b border-slate-800">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-bold text-slate-200 uppercase tracking-wider text-sm flex items-center gap-2">
+            Candidate Pool <span id="pool-count" class="badge-count">0</span>
+          </h2>
+        </div>
+
+        <!-- Filter Chips: Categories + Holiday Modifier -->
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+          <div class="flex gap-1.5">
+            <button data-filter="all" class="chip active">All</button>
+            <button data-filter="readyA" class="chip">Ready A</button>
+            <button data-filter="readyB" class="chip">Ready B</button>
+            <button data-filter="phil" class="chip">Phil Bass</button>
+            <button data-filter="horns" class="chip">Horns</button>
+          </div>
+          <span class="text-slate-600 font-mono">|</span>
+          <button id="btn-holiday-toggle" class="chip chip-holiday">
+            🎅 + Holiday
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Cards Pool -->
+      <div id="pool-list" class="flex-1 overflow-y-auto mt-3 pr-1 space-y-2 card-dropzone"></div>
+    </section>
+
+    <!-- Column 2: Set One -->
+    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-175px)]">
+      <div class="pb-3 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 class="font-bold text-cyan-400 uppercase tracking-wider text-sm">SET ONE</h2>
+          <p class="text-xs text-slate-400 mt-0.5"><span id="set1-count">0 songs</span> • <span id="set1-time">0:00</span></p>
+        </div>
+        <button onclick="window.app.addCustomCue('set1')" class="btn-cue-add">+ Add Cue</button>
+      </div>
+
+      <div class="flex-1 flex flex-col gap-3 overflow-hidden mt-3">
+        <!-- Main Set 1 list -->
+        <div class="flex-1 overflow-y-auto pr-1 flex flex-col">
+          <p class="text-[11px] font-semibold text-slate-400 uppercase mb-1">Active Set</p>
+          <div id="set1-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-24"></div>
+        </div>
+
+        <!-- Set 1 Reserve -->
+        <div class="border-t border-slate-800 pt-2 h-44 flex flex-col">
+          <p class="text-[11px] font-semibold text-amber-500/80 uppercase mb-1">Reserve / Alternates</p>
+          <div id="set1-res-list" class="flex-1 overflow-y-auto pr-1 space-y-2 card-dropzone min-h-[60px]"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3: Set Two -->
+    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-175px)]">
+      <div class="pb-3 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h2 class="font-bold text-cyan-400 uppercase tracking-wider text-sm">SET TWO</h2>
+          <p class="text-xs text-slate-400 mt-0.5"><span id="set2-count">0 songs</span> • <span id="set2-time">0:00</span></p>
+        </div>
+        <button onclick="window.app.addCustomCue('set2')" class="btn-cue-add">+ Add Cue</button>
+      </div>
+
+      <div class="flex-1 flex flex-col gap-3 overflow-hidden mt-3">
+        <!-- Main Set 2 list -->
+        <div class="flex-1 overflow-y-auto pr-1 flex flex-col">
+          <p class="text-[11px] font-semibold text-slate-400 uppercase mb-1">Active Set</p>
+          <div id="set2-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-24"></div>
+        </div>
+
+        <!-- Set 2 Reserve -->
+        <div class="border-t border-slate-800 pt-2 h-44 flex flex-col">
+          <p class="text-[11px] font-semibold text-amber-500/80 uppercase mb-1">Reserve / Alternates</p>
+          <div id="set2-res-list" class="flex-1 overflow-y-auto pr-1 space-y-2 card-dropzone min-h-[60px]"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Import Previous Setlist Text -->
+  <div id="import-modal" class="modal-backdrop hidden">
+    <div class="modal-window">
+      <h3 class="text-lg font-bold text-white mb-2">Import Previous Setlist</h3>
+      <p class="text-xs text-slate-400 mb-3">Paste a plain text setlist with headers like "SET ONE", "SET TWO", or "RESERVE":</p>
+      <textarea id="import-textarea" class="w-full h-48 bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="SET ONE&#10;Autumn Leaves&#10;Blue Bossa&#10;&#10;SET TWO&#10;C Jam Blues"></textarea>
+      <div class="flex justify-end gap-2 mt-4">
+        <button id="btn-close-import" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Cancel</button>
+        <button id="btn-run-import" class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold">Import Text</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>
