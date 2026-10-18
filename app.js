@@ -133,17 +133,49 @@ function parseCSVAndIngest(csvText) {
   const rows = parseCSV(csvText);
   allSongs = [];
 
-  for (let i = 3; i < rows.length; i++) {
+  // Locate the header row dynamically
+  let headerRowIndex = -1;
+  let colTitle = 0;
+  let colGenre = 2;
+  let colReady = 5;
+  let colPBass = 6;
+  let colHorns = 7;
+  let colTime = 10;
+
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const r = rows[i].map(c => (c || '').toLowerCase().trim());
+    const tIdx = r.findIndex(c => c === 'title' || c.includes('song title'));
+    if (tIdx !== -1) {
+      headerRowIndex = i;
+      colTitle = tIdx;
+      const gIdx = r.findIndex(c => c === 'genre');
+      if (gIdx !== -1) colGenre = gIdx;
+      const rIdx = r.findIndex(c => c === 'ready');
+      if (rIdx !== -1) colReady = rIdx;
+      const pIdx = r.findIndex(c => c.includes('bass') || c.includes('phil'));
+      if (pIdx !== -1) colPBass = pIdx;
+      const hIdx = r.findIndex(c => c.includes('horn'));
+      if (hIdx !== -1) colHorns = hIdx;
+      const dIdx = r.findIndex(c => c.includes('time') || c.includes('duration'));
+      if (dIdx !== -1) colTime = dIdx;
+      break;
+    }
+  }
+
+  const startIndex = headerRowIndex !== -1 ? headerRowIndex + 1 : 3;
+
+  for (let i = startIndex; i < rows.length; i++) {
     const r = rows[i];
     if (!r || r.length === 0) continue;
 
-    const title = (r[0] || '').trim();
-    const genre = (r[2] || '').trim();
-    const rawReady = (r[5] || '').trim().toUpperCase();
-    const rawPBass = (r[6] || '').trim();
-    const rawHorns = (r[7] || '').trim();
-    const rawTime = (r[10] || '').trim();
+    const title = (r[colTitle] || '').trim();
+    const genre = (r[colGenre] || '').trim();
+    const rawReady = (r[colReady] || '').trim().toUpperCase();
+    const rawPBass = (r[colPBass] || '').trim();
+    const rawHorns = (r[colHorns] || '').trim();
+    const rawTime = (r[colTime] || '').trim();
 
+    // STRICT CRITERION: Title must exist AND Ready must be strictly 'A' or 'B'
     if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
       continue;
     }
@@ -165,13 +197,13 @@ function parseCSVAndIngest(csvText) {
 
   console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
 
-  // Attempt restoring saved sets; if none exist, set default date title
+  // Try to restore saved sets; if no valid items restored, set default title
   const hasRestored = restoreSavedState();
   if (!hasRestored) {
     setDefaultTitle();
   }
 
-  // Always render the candidate pool and calculate column statistics
+  // Always force-render candidate pool and stats
   renderPool();
   updateSetStats();
 }
@@ -192,13 +224,18 @@ function renderPool() {
   if (!pool) return;
 
   const assignedIds = new Set();
-  document.querySelectorAll('#set1-list [data-id], #set1-res-list [data-id], #set2-list [data-id], #set2-res-list [data-id]').forEach(el => {
+  document.querySelectorAll('#set1-list .song-card, #set1-res-list .song-card, #set2-list .song-card, #set2-res-list .song-card').forEach(el => {
     const id = el.getAttribute('data-id');
-    if (id) assignedIds.add(id);
+    const title = (el.getAttribute('data-title') || '').toLowerCase().trim();
+    if (id && !id.startsWith('custom_')) assignedIds.add(id);
+    if (title) assignedIds.add(title);
   });
 
   const visibleSongs = allSongs.filter(song => {
+    // Check by unique ID or matching normalized title
     if (assignedIds.has(song.id)) return false;
+    if (assignedIds.has(song.title.toLowerCase().trim())) return false;
+
     if (song.isHoliday && !showHoliday) return false;
 
     if (activeFilter === 'readyA' && song.ready !== 'A') return false;
@@ -383,12 +420,23 @@ function saveCurrentState() {
       return items;
     };
 
+    const set1 = serializeContainer('set1-list');
+    const set1Res = serializeContainer('set1-res-list');
+    const set2 = serializeContainer('set2-list');
+    const set2Res = serializeContainer('set2-res-list');
+
+    // Only save if there's actually something present
+    if (set1.length === 0 && set1Res.length === 0 && set2.length === 0 && set2Res.length === 0) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+
     const state = {
       title: document.getElementById('gig-title')?.value || '',
-      set1: serializeContainer('set1-list'),
-      set1Res: serializeContainer('set1-res-list'),
-      set2: serializeContainer('set2-list'),
-      set2Res: serializeContainer('set2-res-list')
+      set1,
+      set1Res,
+      set2,
+      set2Res
     };
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -404,13 +452,13 @@ function restoreSavedState() {
     const state = JSON.parse(raw);
     if (!state) return false;
 
-    // Check if there is anything actually stored
     const hasItems = (Array.isArray(state.set1) && state.set1.length > 0) ||
                      (Array.isArray(state.set1Res) && state.set1Res.length > 0) ||
                      (Array.isArray(state.set2) && state.set2.length > 0) ||
                      (Array.isArray(state.set2Res) && state.set2Res.length > 0);
 
-    if (!hasItems && !state.title) {
+    if (!hasItems) {
+      localStorage.removeItem(STORAGE_KEY);
       return false;
     }
 
@@ -427,7 +475,7 @@ function restoreSavedState() {
         if (item.type === 'cue') {
           container.appendChild(createCueCard(item.title));
         } else {
-          const knownSong = allSongs.find(s => s.id === item.id);
+          const knownSong = allSongs.find(s => s.id === item.id || s.title.toLowerCase().trim() === (item.title || '').toLowerCase().trim());
           if (knownSong) {
             container.appendChild(createSongCard(knownSong));
           } else {
@@ -445,6 +493,7 @@ function restoreSavedState() {
     return true;
   } catch (err) {
     console.warn('LocalStorage restore failed:', err);
+    localStorage.removeItem(STORAGE_KEY);
     return false;
   }
 }
