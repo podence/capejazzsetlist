@@ -1,6 +1,6 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence
+ * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Geoff's Title Text Effect
  */
 
 const STORAGE_KEY = 'capejazz_saved_state';
@@ -351,7 +351,7 @@ function calculateColumnStats(containerId, countId, timeId) {
   }
 }
 
-// 9. LocalStorage Persistence Engine (Completely Local to Browser)
+// 9. LocalStorage Persistence Engine
 function saveCurrentState() {
   try {
     const serializeContainer = (id) => {
@@ -732,25 +732,68 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
-  const titleStyle = format === 'geoff'
-    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
-    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
+  // Geoff's Title: Red fill (#D60000), white outline/stroke halo, and soft bottom-right drop shadow
+  let titleSectionHtml = '';
+  if (format === 'geoff') {
+    titleSectionHtml = `
+      <div style="text-align: center; margin-bottom: 16pt; line-height: 1.1;">
+        <!--[if mso]>
+        <v:shapetype id="WordTitleGeoff" coordsize="21600,21600" o:spt="136" adj="10800" path="m@7,l@8,m@5,21600l@6,21600e">
+          <v:stroke joinstyle="round" />
+          <v:textpath on="t" fitshape="t" />
+          <v:path textpathok="t" />
+        </v:shapetype>
+        <v:shape type="#WordTitleGeoff" style="width:520pt;height:42pt;" fillcolor="#D60000" strokecolor="#FFFFFF" strokeweight="1.5pt">
+          <v:shadow on="t" type="single" color="#7F7F7F" opacity="0.65" offset="2.5pt,2.5pt" />
+          <v:textpath style="font-family:'Calibri',sans-serif;font-size:30pt;font-weight:bold;" string="${escapeHtml(gigTitle)}" />
+        </v:shape>
+        <![endif]-->
+        <!--[if !mso]><!-->
+        <div style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000; -webkit-text-stroke: 1.25px #ffffff; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 3px rgba(0,0,0,0.45); letter-spacing: 0.5px;">
+          ${escapeHtml(gigTitle)}
+        </div>
+        <!--<![endif]-->
+      </div>
+    `;
+  } else {
+    titleSectionHtml = `
+      <div style="font-family: 'Aptos', sans-serif; color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;">
+        ${escapeHtml(gigTitle)}
+      </div>
+    `;
+  }
 
   const docContent = `
-    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
       <meta charset='utf-8'>
       <title>${escapeHtml(gigTitle)}</title>
+      <!--[if gte mso 9]>
+      <xml>
+        <o:OfficeDocumentSettings>
+          <o:PixelsPerInch>96</o:PixelsPerInch>
+        </o:OfficeDocumentSettings>
+        <w:WordDocument>
+          <w:View>Print</w:View>
+          <w:Zoom>100</w:Zoom>
+          <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+      </xml>
+      <![endif]-->
       <style>
         @page { size: 8.5in 11in; margin: 0.75in; }
-        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
+        v\\:* { behavior: url(#default#VML); display: inline-block; }
+        o\\:* { behavior: url(#default#VML); }
+        w\\:* { behavior: url(#default#VML); }
+        .shape { behavior: url(#default#VML); }
+        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; margin: 0; padding: 0; }
         table { width: 100%; border-collapse: collapse; }
         td { width: 50%; vertical-align: top; padding-right: 20pt; }
         td + td { padding-right: 0; padding-left: 20pt; }
       </style>
     </head>
     <body>
-      <div style="${titleStyle}">${escapeHtml(gigTitle)}</div>
+      ${titleSectionHtml}
       <table><tr><td>${col1Html}</td><td>${col2Html}</td></tr></table>
     </body>
     </html>
