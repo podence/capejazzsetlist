@@ -1,6 +1,6 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Clean Red Word Export Title
+ * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Guaranteed Pool Render
  */
 
 const STORAGE_KEY = 'capejazz_saved_state';
@@ -165,11 +165,15 @@ function parseCSVAndIngest(csvText) {
 
   console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
 
+  // Attempt restoring saved sets; if none exist, set default date title
   const hasRestored = restoreSavedState();
   if (!hasRestored) {
     setDefaultTitle();
   }
+
+  // Always render the candidate pool and calculate column statistics
   renderPool();
+  updateSetStats();
 }
 
 // Determine genre CSS class
@@ -189,7 +193,8 @@ function renderPool() {
 
   const assignedIds = new Set();
   document.querySelectorAll('#set1-list [data-id], #set1-res-list [data-id], #set2-list [data-id], #set2-res-list [data-id]').forEach(el => {
-    assignedIds.add(el.getAttribute('data-id'));
+    const id = el.getAttribute('data-id');
+    if (id) assignedIds.add(id);
   });
 
   const visibleSongs = allSongs.filter(song => {
@@ -220,9 +225,9 @@ function createSongCard(song) {
   const card = document.createElement('div');
   const holidayCardClass = song.isHoliday ? 'genre-holiday-card' : '';
   card.className = `song-card card-song bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors ${holidayCardClass}`;
-  card.setAttribute('data-id', song.id);
-  card.setAttribute('data-title', song.title);
-  card.setAttribute('data-duration', song.duration);
+  card.setAttribute('data-id', song.id || `custom_${Date.now()}`);
+  card.setAttribute('data-title', song.title || '');
+  card.setAttribute('data-duration', song.duration || '3:00');
   card.setAttribute('data-genre', song.genre || '');
   card.setAttribute('data-ready', song.ready || '');
   card.setAttribute('data-pbass', song.pBass ? 'true' : 'false');
@@ -233,8 +238,8 @@ function createSongCard(song) {
 
   card.innerHTML = `
     <div class="flex items-center justify-between mb-1.5 pointer-events-none">
-      <span class="${titleClass} font-semibold">${escapeHtml(song.title)}</span>
-      <span class="font-mono text-[11px] text-slate-400">${song.duration}</span>
+      <span class="${titleClass} font-semibold">${escapeHtml(song.title || '')}</span>
+      <span class="font-mono text-[11px] text-slate-400">${song.duration || '3:00'}</span>
     </div>
     <div class="flex items-center justify-between text-[10px] pointer-events-none">
       <div class="flex items-center gap-1.5">
@@ -399,6 +404,16 @@ function restoreSavedState() {
     const state = JSON.parse(raw);
     if (!state) return false;
 
+    // Check if there is anything actually stored
+    const hasItems = (Array.isArray(state.set1) && state.set1.length > 0) ||
+                     (Array.isArray(state.set1Res) && state.set1Res.length > 0) ||
+                     (Array.isArray(state.set2) && state.set2.length > 0) ||
+                     (Array.isArray(state.set2Res) && state.set2Res.length > 0);
+
+    if (!hasItems && !state.title) {
+      return false;
+    }
+
     if (state.title) {
       const gigTitle = document.getElementById('gig-title');
       if (gigTitle) gigTitle.value = state.title;
@@ -427,7 +442,6 @@ function restoreSavedState() {
     restoreContainer('set2-list', state.set2);
     restoreContainer('set2-res-list', state.set2Res);
 
-    updateSetStats();
     return true;
   } catch (err) {
     console.warn('LocalStorage restore failed:', err);
@@ -444,7 +458,10 @@ function setupEventListeners() {
 
   const syncBtn = document.getElementById('btn-reload-sheet');
   if (syncBtn) {
-    syncBtn.addEventListener('click', () => loadSheetCSV());
+    syncBtn.addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      loadSheetCSV();
+    });
   }
 
   const resetBtn = document.getElementById('btn-reset');
@@ -460,8 +477,8 @@ function setupEventListeners() {
 
       localStorage.removeItem(STORAGE_KEY);
       setDefaultTitle();
-      updateSetStats();
       renderPool();
+      updateSetStats();
     });
   }
 
@@ -732,7 +749,6 @@ function exportWordDoc(format = 'standard') {
   const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
   const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
-  // Geoff's format: centered, bold red, clean and robust
   const titleSectionHtml = format === 'geoff'
     ? `<p align="center" style="text-align: center; margin-top: 0in; margin-bottom: 18pt;">
          <span style="font-family: 'Calibri', sans-serif; font-size: 28pt; font-weight: bold; color: #D60000;">
