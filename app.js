@@ -1,513 +1,500 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * Repository: podence/capejazzsetlist
+ * app.js - Direct CSV Ingestion matching index.html IDs
  */
 
 const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
 const SHEET_GID = '477864766';
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+
+// Global app handlers exposed immediately before any DOM event runs
+window.app = {
+  addCustomCue: (setKey) => {
+    const text = prompt("Enter stage cue (e.g. 'Switch guitars', 'Acoustic Guitar', 'Break'):", "Switch guitars");
+    if (!text || !text.trim()) return;
+    const target = setKey === 'set1' ? document.getElementById('set1-list') : document.getElementById('set2-list');
+    if (!target) return;
+
+    target.appendChild(createCueCard(text.trim()));
+    updateSetStats();
+  },
+  updateStats: () => updateSetStats()
+};
 
 // State
 let allSongs = [];
-let activeFilter = 'ALL';
-let sortables = {};
+let activeFilter = 'all';
+let showHoliday = false;
 
-// Helper: Format today's date as M/D/YY
-function getDefaultTitle() {
-  const d = new Date();
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
-  const year = String(d.getFullYear()).slice(-2);
-  return `Set List ${month}/${day}/${year}`;
-}
-
-// Convert MM:SS or M:SS string to total seconds
-function parseTimeToSeconds(timeStr) {
-  if (!timeStr) return 0;
-  const clean = timeStr.trim();
-  const parts = clean.split(':');
-  if (parts.length === 2) {
-    const mins = parseInt(parts[0], 10) || 0;
-    const secs = parseInt(parts[1], 10) || 0;
-    return (mins * 60) + secs;
-  }
-  return 0;
-}
-
-// Format seconds into M:SS or MM:SS
-function formatSecondsToTime(totalSecs) {
-  const mins = Math.floor(totalSecs / 60);
-  const secs = totalSecs % 60;
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-}
-
-// Ingestion & CSV Parsing Pipeline (Protected)
-function parseCSV(text) {
-  const rows = [];
-  let currentRow = [];
-  let currentField = '';
-  let insideQuote = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const nextChar = text[i + 1];
-
-    if (char === '"') {
-      if (insideQuote && nextChar === '"') {
-        currentField += '"';
-        i++;
-      } else {
-        insideQuote = !insideQuote;
-      }
-    } else if (char === ',' && !insideQuote) {
-      currentRow.push(currentField);
-      currentField = '';
-    } else if ((char === '\r' || char === '\n') && !insideQuote) {
-      if (char === '\r' && nextChar === '\n') {
-        i++;
-      }
-      currentRow.push(currentField);
-      rows.push(currentRow);
-      currentRow = [];
-      currentField = '';
-    } else {
-      currentField += char;
-    }
-  }
-
-  if (currentField || currentRow.length > 0) {
-    currentRow.push(currentField);
-    rows.push(currentRow);
-  }
-
-  return rows;
-}
-
-async function loadSheetCSV() {
-  try {
-    const response = await fetch(CSV_URL);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const text = await response.text();
-    parseCSVAndIngest(text);
-  } catch (err) {
-    console.error('Failed to load Google Sheet CSV:', err);
-    const poolEl = document.getElementById('candidatePool');
-    if (poolEl) {
-      poolEl.innerHTML = `<div style="color:red; padding:15px;">Failed to load songs from Google Sheet. Verify internet connection or CORS settings.</div>`;
-    }
-  }
-}
-
-function parseCSVAndIngest(csvText) {
-  const rows = parseCSV(csvText);
-  if (rows.length < 2) return;
-
-  const header = rows[0].map(h => h.trim());
-  const colTitle = 0;   // Col A
-  const colGenre = 2;   // Col C
-  const colReady = 5;   // Col F
-  const colBass = 6;    // Col G
-  const colHorns = 7;   // Col H
-  const colDur = 10;    // Col K
-
-  allSongs = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r || r.length <= colTitle) continue;
-
-    const title = (r[colTitle] || '').trim();
-    if (!title) continue;
-
-    const readiness = (r[colReady] || '').trim().toUpperCase();
-    // Only ingest A or B readiness
-    if (readiness !== 'A' && readiness !== 'B') continue;
-
-    const genre = (r[colGenre] || '').trim();
-    const bass = (r[colBass] || '').trim();
-    const horns = (r[colHorns] || '').trim();
-    const durRaw = (r[colDur] || '').trim();
-    const durationSec = parseTimeToSeconds(durRaw);
-
-    allSongs.push({
-      id: `song-${i}`,
-      title: title,
-      genre: genre,
-      readiness: readiness,
-      bass: bass,
-      horns: horns,
-      durationRaw: durRaw || '0:00',
-      durationSec: durationSec,
-      isHoliday: genre.toLowerCase().includes('holiday') || genre.toLowerCase().includes('christmas')
-    });
-  }
-
-  console.log(`Ingested ${allSongs.length} eligible songs (A/B readiness).`);
-  renderCandidatePool();
-  updateAllDurations();
-}
-
-// Rendering Candidate Pool
-function renderCandidatePool() {
-  const pool = document.getElementById('candidatePool');
-  if (!pool) return;
-
-  pool.innerHTML = '';
-
-  const filtered = allSongs.filter(song => {
-    if (activeFilter === 'ALL') return !song.isHoliday;
-    if (activeFilter === 'HOLIDAY') return song.isHoliday;
-    if (activeFilter === 'A') return song.readiness === 'A' && !song.isHoliday;
-    if (activeFilter === 'B') return song.readiness === 'B' && !song.isHoliday;
-    return true;
-  });
-
-  filtered.forEach(song => {
-    // Avoid re-rendering songs currently placed in sets or reserves
-    if (document.getElementById(song.id)) return;
-
-    const el = createSongCard(song);
-    pool.appendChild(el);
-  });
-}
-
-function createSongCard(song) {
-  const div = document.createElement('div');
-  div.className = 'song-card';
-  div.id = song.id;
-  div.setAttribute('data-id', song.id);
-  div.setAttribute('data-title', song.title);
-  div.setAttribute('data-duration', song.durationSec);
-  div.setAttribute('data-raw-duration', song.durationRaw);
-  div.setAttribute('data-genre', song.genre);
-  div.setAttribute('data-bass', song.bass);
-  div.setAttribute('data-horns', song.horns);
-
-  const hornBadge = song.horns ? `<span class="badge horns">${song.horns}</span>` : '';
-  const bassBadge = song.bass ? `<span class="badge bass">${song.bass}</span>` : '';
-
-  div.innerHTML = `
-    <div class="song-info">
-      <span class="song-title">${song.title}</span>
-      <span class="song-meta">${song.genre} &bull; ${song.durationRaw}</span>
-    </div>
-    <div class="song-badges">
-      ${hornBadge}
-      ${bassBadge}
-    </div>
-  `;
-  return div;
-}
-
-// Cue Handling
-function addCustomCue(targetSet) {
-  const cueText = prompt('Enter stage cue (e.g., "Switch to Fretless", "Break", "Announcements"):');
-  if (!cueText || !cueText.trim()) return;
-
-  const targetList = document.getElementById(targetSet === 1 ? 'set1List' : 'set2List');
-  if (!targetList) return;
-
-  const cueId = `cue-${Date.now()}`;
-  const cueEl = document.createElement('div');
-  cueEl.className = 'song-card cue-card';
-  cueEl.id = cueId;
-  cueEl.setAttribute('data-is-cue', 'true');
-  cueEl.setAttribute('data-title', cueText.trim());
-
-  cueEl.innerHTML = `
-    <div class="song-info">
-      <span class="cue-title">STAGE CUE: ${cueText.trim()}</span>
-    </div>
-    <button type="button" class="btn-delete-cue" onclick="this.closest('.cue-card').remove(); window.app.updateAllDurations();">&times;</button>
-  `;
-
-  targetList.appendChild(cueEl);
-  updateAllDurations();
-}
-
-// Duration Calculations
-function updateAllDurations() {
-  updateSectionDuration('set1List', 'set1Duration', 'set1Count');
-  updateSectionDuration('set1Reserve', 'set1ReserveDuration', 'set1ReserveCount');
-  updateSectionDuration('set2List', 'set2Duration', 'set2Count');
-  updateSectionDuration('set2Reserve', 'set2ReserveDuration', 'set2ReserveCount');
-}
-
-function updateSectionDuration(listId, durationId, countId) {
-  const listEl = document.getElementById(listId);
-  const durEl = document.getElementById(durationId);
-  const countEl = document.getElementById(countId);
-  if (!listEl) return;
-
-  let totalSecs = 0;
-  let songCount = 0;
-
-  Array.from(listEl.children).forEach(child => {
-    if (child.getAttribute('data-is-cue') === 'true') return;
-    const sec = parseInt(child.getAttribute('data-duration'), 10) || 0;
-    totalSecs += sec;
-    songCount++;
-  });
-
-  if (durEl) durEl.textContent = formatSecondsToTime(totalSecs);
-  if (countEl) countEl.textContent = `${songCount} song${songCount === 1 ? '' : 's'}`;
-}
-
-// SortableJS Drag & Drop Initialization
-function initSortables() {
-  const containers = [
-    'candidatePool',
-    'set1List',
-    'set1Reserve',
-    'set2List',
-    'set2Reserve'
-  ];
-
-  containers.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-
-    sortables[id] = new Sortable(el, {
-      group: 'setlist-shared',
-      animation: 150,
-      ghostClass: 'sortable-ghost',
-      chosenClass: 'sortable-chosen',
-      onEnd: () => {
-        updateAllDurations();
-      }
-    });
-  });
-}
-
-// Export Engine: Standard vs Geoff Format
-function extractSetData(containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) return [];
-
-  const items = [];
-  Array.from(container.children).forEach(child => {
-    const isCue = child.getAttribute('data-is-cue') === 'true';
-    if (isCue) {
-      items.push({
-        isCue: true,
-        title: child.getAttribute('data-title') || 'Cue'
-      });
-    } else {
-      items.push({
-        isCue: false,
-        title: child.getAttribute('data-title') || '',
-        duration: child.getAttribute('data-raw-duration') || '',
-        genre: child.getAttribute('data-genre') || '',
-        bass: child.getAttribute('data-bass') || '',
-        horns: child.getAttribute('data-horns') || ''
-      });
-    }
-  });
-  return items;
-}
-
-async function exportWord(formatType = 'standard') {
-  if (typeof docx === 'undefined') {
-    alert('Word export engine (docx.js) is not loaded.');
-    return;
-  }
-
-  const gigTitle = (document.getElementById('gigTitleInput')?.value || getDefaultTitle()).trim();
-  const set1Items = extractSetData('set1List');
-  const set1Reserve = extractSetData('set1Reserve');
-  const set2Items = extractSetData('set2List');
-  const set2Reserve = extractSetData('set2Reserve');
-
-  const set1Dur = document.getElementById('set1Duration')?.textContent || '0:00';
-  const set2Dur = document.getElementById('set2Duration')?.textContent || '0:00';
-
-  const isGeoff = formatType === 'geoff';
-  const docFont = isGeoff ? 'Calibri' : 'Aptos';
-
-  const doc = new docx.Document({
-    sections: [{
-      properties: {
-        page: {
-          margin: { top: 720, bottom: 720, left: 1080, right: 1080 } // 0.5" top/bot, 0.75" sides
-        }
-      },
-      children: [
-        // Title
-        new docx.Paragraph({
-          children: [
-            new docx.TextRun({
-              text: gigTitle,
-              bold: true,
-              size: 36, // 18pt
-              font: docFont,
-              shading: isGeoff ? { type: docx.ShadingType.SOLID, color: "F0F0F0" } : undefined
-            })
-          ],
-          alignment: docx.AlignmentType.CENTER,
-          spacing: { after: 200 }
-        }),
-
-        // SET 1 Header
-        new docx.Paragraph({
-          children: [
-            new docx.TextRun({
-              text: 'SET 1',
-              bold: true,
-              underline: {},
-              size: 26, // 13pt
-              font: docFont
-            })
-          ],
-          spacing: { before: 150, after: 100 }
-        }),
-        ...generateDocxItemList(set1Items, docFont, isGeoff),
-
-        // Set 1 Total
-        new docx.Paragraph({
-          children: [
-            new docx.TextRun({
-              text: `Set 1 Duration: ${set1Dur}`,
-              bold: !isGeoff, // Geoff: unbolded
-              color: isGeoff ? 'C00000' : '000000', // Geoff: red total
-              size: 22,
-              font: docFont
-            })
-          ],
-          spacing: { before: 100, after: 100 }
-        }),
-
-        // Set 1 Reserve
-        ...(set1Reserve.length > 0 ? [
-          new docx.Paragraph({
-            children: [
-              new docx.TextRun({
-                text: 'Reserve / Alternates:',
-                bold: !isGeoff, // Geoff: unbolded
-                size: 20,
-                font: docFont
-              })
-            ],
-            spacing: { before: 80, after: 60 }
-          }),
-          ...generateDocxItemList(set1Reserve, docFont, isGeoff)
-        ] : []),
-
-        // SET 2 Header
-        new docx.Paragraph({
-          children: [
-            new docx.TextRun({
-              text: 'SET 2',
-              bold: true,
-              underline: {},
-              size: 26,
-              font: docFont
-            })
-          ],
-          spacing: { before: 250, after: 100 }
-        }),
-        ...generateDocxItemList(set2Items, docFont, isGeoff),
-
-        // Set 2 Total
-        new docx.Paragraph({
-          children: [
-            new docx.TextRun({
-              text: `Set 2 Duration: ${set2Dur}`,
-              bold: !isGeoff, // Geoff: unbolded
-              color: isGeoff ? 'C00000' : '000000',
-              size: 22,
-              font: docFont
-            })
-          ],
-          spacing: { before: 100, after: 100 }
-        }),
-
-        // Set 2 Reserve
-        ...(set2Reserve.length > 0 ? [
-          new docx.Paragraph({
-            children: [
-              new docx.TextRun({
-                text: 'Reserve / Alternates:',
-                bold: !isGeoff, // Geoff: unbolded
-                size: 20,
-                font: docFont
-              })
-            ],
-            spacing: { before: 80, after: 60 }
-          }),
-          ...generateDocxItemList(set2Reserve, docFont, isGeoff)
-        ] : [])
-      ]
-    }]
-  });
-
-  const blob = await docx.Packer.toBlob(doc);
-  const safeFilename = gigTitle.toLowerCase().replace(/[^a-z0-9]/g, '_') + (isGeoff ? '_geoff' : '') + '.docx';
-  saveAs(blob, safeFilename);
-}
-
-function generateDocxItemList(items, docFont, isGeoff) {
-  return items.map((item, idx) => {
-    if (item.isCue) {
-      return new docx.Paragraph({
-        children: [
-          new docx.TextRun({
-            text: `*** ${item.title} ***`,
-            italics: true,
-            bold: false,
-            color: '666666',
-            size: 20,
-            font: docFont
-          })
-        ],
-        spacing: { before: 40, after: 40 }
-      });
-    }
-
-    const details = [item.duration, item.bass, item.horns].filter(Boolean).join(' | ');
-    return new docx.Paragraph({
-      children: [
-        new docx.TextRun({
-          text: `${item.title}`,
-          bold: !isGeoff,
-          size: 22,
-          font: docFont
-        }),
-        new docx.TextRun({
-          text: details ? `  (${details})` : '',
-          size: 20,
-          color: '555555',
-          font: docFont
-        })
-      ],
-      spacing: { before: 30, after: 30 }
-    });
-  });
-}
-
-// Global initialization
-window.addEventListener('DOMContentLoaded', () => {
-  const titleInput = document.getElementById('gigTitleInput');
-  if (titleInput && !titleInput.value) {
-    titleInput.value = getDefaultTitle();
-  }
-
-  // Filter chips
-  document.querySelectorAll('.filter-chip').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      activeFilter = e.target.getAttribute('data-filter') || 'ALL';
-      renderCandidatePool();
-    });
-  });
-
-  initSortables();
+// Initialize on DOM Ready
+document.addEventListener('DOMContentLoaded', () => {
+  setDefaultTitle();
+  initSortable();
+  setupEventListeners();
   loadSheetCSV();
 });
 
-// Window namespace for inline template calls
-window.app = {
-  addCustomCue,
-  exportWord,
-  updateAllDurations
-};
+// 1. Default Title: "Set List M/D/YY"
+function setDefaultTitle() {
+  const titleInput = document.getElementById('gig-title');
+  if (!titleInput) return;
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  const yy = String(now.getFullYear()).slice(-2);
+  titleInput.value = `Set List ${m}/${d}/${yy}`;
+}
+
+// 2. Fetch CSV Directly from Google Sheets
+async function loadSheetCSV() {
+  const pool = document.getElementById('pool-list');
+  const countBadge = document.getElementById('pool-count');
+
+  if (pool) {
+    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs">Loading songs from Google Sheet...</div>';
+  }
+
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+
+  try {
+    const res = await fetch(csvUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status} - Check sheet sharing permissions`);
+    const csvText = await res.text();
+    parseCSVAndIngest(csvText);
+  } catch (err) {
+    console.error('Sheet fetch error:', err);
+    if (pool) {
+      pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/60 border border-rose-800 rounded text-xs">Failed to load songs: ${err.message}</div>`;
+    }
+  }
+}
+
+// 3. Robust CSV Parser
+function parseCSV(text) {
+  const lines = [];
+  let row = [''];
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        row[row.length - 1] += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push('');
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      lines.push(row);
+      row = [''];
+    } else {
+      row[row.length - 1] += char;
+    }
+  }
+  if (row.length > 1 || row[0] !== '') lines.push(row);
+  return lines;
+}
+
+// 4. Ingest & Gate Data
+function parseCSVAndIngest(csvText) {
+  const rows = parseCSV(csvText);
+  allSongs = [];
+
+  // Data starts at Sheet Row 4 (index 3). Row index 2 contains headers.
+  for (let i = 3; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length === 0) continue;
+
+    const title = (r[0] || '').trim();
+    const genre = (r[2] || '').trim();
+    const rawReady = (r[5] || '').trim().toUpperCase();
+    const rawPBass = (r[6] || '').trim();
+    const rawHorns = (r[7] || '').trim();
+    const rawTime = (r[10] || '').trim();
+
+    // STRICT CRITERION: Title must exist AND Ready must be strictly 'A' or 'B'
+    if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
+      continue;
+    }
+
+    const isHoliday = /holiday/i.test(genre) ||
+                      /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
+
+    allSongs.push({
+      id: `song_${i}_${title.replace(/[^a-zA-Z0-9]/g, '')}`,
+      title,
+      genre,
+      ready: rawReady,
+      pBass: rawPBass !== '' && rawPBass !== '0' && rawPBass.toLowerCase() !== 'no',
+      horns: rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no',
+      duration: rawTime || '3:00',
+      isHoliday
+    });
+  }
+
+  console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
+  renderPool();
+}
+
+// 5. Render Candidate Cards to #pool-list
+function renderPool() {
+  const pool = document.getElementById('pool-list');
+  const countBadge = document.getElementById('pool-count');
+  if (!pool) return;
+
+  const assignedIds = new Set();
+  document.querySelectorAll('#set1-list [data-id], #set1-res-list [data-id], #set2-list [data-id], #set2-res-list [data-id]').forEach(el => {
+    assignedIds.add(el.getAttribute('data-id'));
+  });
+
+  const visibleSongs = allSongs.filter(song => {
+    if (assignedIds.has(song.id)) return false;
+
+    if (song.isHoliday && !showHoliday) return false;
+
+    if (activeFilter === 'readyA' && song.ready !== 'A') return false;
+    if (activeFilter === 'readyB' && song.ready !== 'B') return false;
+    if (activeFilter === 'phil' && !song.pBass) return false;
+    if (activeFilter === 'horns' && !song.horns) return false;
+
+    return true;
+  });
+
+  pool.innerHTML = '';
+
+  visibleSongs.forEach(song => {
+    pool.appendChild(createSongCard(song));
+  });
+
+  if (countBadge) {
+    countBadge.innerText = visibleSongs.length;
+  }
+}
+
+// 6. Song Card Builder
+function createSongCard(song) {
+  const card = document.createElement('div');
+  card.className = 'song-card bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors';
+  card.setAttribute('data-id', song.id);
+  card.setAttribute('data-title', song.title);
+  card.setAttribute('data-duration', song.duration);
+
+  const titleColor = song.isHoliday ? 'text-[#fca5a5] font-semibold' : 'text-slate-100 font-medium';
+
+  card.innerHTML = `
+    <div class="flex items-center justify-between mb-1.5 pointer-events-none">
+      <span class="${titleColor}">${escapeHtml(song.title)}</span>
+      <span class="font-mono text-[11px] text-slate-400">${song.duration}</span>
+    </div>
+    <div class="flex items-center justify-between text-[10px] pointer-events-none">
+      <div class="flex items-center gap-1.5">
+        <span class="px-1.5 py-0.5 rounded font-mono font-bold ${song.ready === 'A' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-blue-950 text-blue-400 border border-blue-800'}">
+          Ready ${song.ready}
+        </span>
+        ${song.pBass ? '<span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold">🎸 Bass</span>' : ''}
+        ${song.horns ? '<span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold">🎺 Horns</span>' : ''}
+      </div>
+      ${song.genre ? `<span class="text-slate-500 italic">${escapeHtml(song.genre)}</span>` : ''}
+    </div>
+  `;
+  return card;
+}
+
+// Cue Card Builder
+function createCueCard(text) {
+  const card = document.createElement('div');
+  card.className = 'song-card card-cue bg-rose-950/40 border border-rose-800 text-rose-200 p-2 rounded text-xs select-none cursor-grab flex items-center justify-between';
+  card.setAttribute('data-cue', 'true');
+  card.setAttribute('data-title', text);
+  card.innerHTML = `
+    <span class="italic font-semibold pointer-events-none">📌 ${escapeHtml(text)}</span>
+    <button type="button" class="btn-remove-cue text-rose-400 hover:text-rose-200 ml-2 font-bold cursor-pointer">✕</button>
+  `;
+
+  card.querySelector('.btn-remove-cue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    card.remove();
+    updateSetStats();
+  });
+
+  return card;
+}
+
+function escapeHtml(str) {
+  return str.replace(/[&<>'"]/g, tag => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;'
+  }[tag] || tag));
+}
+
+// 7. SortableJS Drag & Drop
+function initSortable() {
+  if (typeof Sortable === 'undefined') {
+    console.warn('SortableJS library not loaded.');
+    return;
+  }
+
+  const containers = [
+    document.getElementById('pool-list'),
+    document.getElementById('set1-list'),
+    document.getElementById('set1-res-list'),
+    document.getElementById('set2-list'),
+    document.getElementById('set2-res-list')
+  ].filter(Boolean);
+
+  containers.forEach(container => {
+    new Sortable(container, {
+      group: 'setlist-builder',
+      animation: 150,
+      ghostClass: 'opacity-40',
+      chosenClass: 'bg-slate-800',
+      onEnd: () => {
+        updateSetStats();
+        const poolCount = document.getElementById('pool-count');
+        const poolList = document.getElementById('pool-list');
+        if (poolCount && poolList) {
+          poolCount.innerText = poolList.querySelectorAll('.song-card').length;
+        }
+      }
+    });
+  });
+}
+
+// 8. Timings & Counts
+function updateSetStats() {
+  calculateColumnStats('set1-list', 'set1-count', 'set1-time');
+  calculateColumnStats('set2-list', 'set2-count', 'set2-time');
+}
+
+function calculateColumnStats(containerId, countId, timeId) {
+  const container = document.getElementById(containerId);
+  const countEl = document.getElementById(countId);
+  const timeEl = document.getElementById(timeId);
+  if (!container) return;
+
+  const cards = container.querySelectorAll('.song-card');
+  let totalSec = 0;
+  let songCount = 0;
+
+  cards.forEach(c => {
+    if (c.getAttribute('data-cue') === 'true') return;
+    songCount++;
+    const durStr = c.getAttribute('data-duration') || '3:00';
+    const parts = durStr.split(':').map(Number);
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      totalSec += (parts[0] * 60) + parts[1];
+    } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      totalSec += (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+    } else {
+      totalSec += 180;
+    }
+  });
+
+  if (countEl) countEl.innerText = `${songCount} songs`;
+  if (timeEl) {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    timeEl.innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+}
+
+// 9. Event Listeners & UI Hooks
+function setupEventListeners() {
+  const syncBtn = document.getElementById('btn-reload-sheet');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', () => loadSheetCSV());
+  }
+
+  const resetBtn = document.getElementById('btn-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      document.getElementById('set1-list').innerHTML = '';
+      document.getElementById('set1-res-list').innerHTML = '';
+      document.getElementById('set2-list').innerHTML = '';
+      document.getElementById('set2-res-list').innerHTML = '';
+      updateSetStats();
+      renderPool();
+    });
+  }
+
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.getAttribute('data-filter');
+      renderPool();
+    });
+  });
+
+  const holidayBtn = document.getElementById('btn-holiday-toggle');
+  if (holidayBtn) {
+    holidayBtn.addEventListener('click', () => {
+      showHoliday = !showHoliday;
+      holidayBtn.classList.toggle('active', showHoliday);
+      renderPool();
+    });
+  }
+
+  const exportBtn = document.getElementById('btn-export-dropdown');
+  const exportMenu = document.getElementById('export-menu');
+  if (exportBtn && exportMenu) {
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', () => exportMenu.classList.add('hidden'));
+  }
+
+  const btnStandard = document.getElementById('btn-export-standard');
+  if (btnStandard) {
+    btnStandard.addEventListener('click', () => exportWordDoc('standard'));
+  }
+
+  const btnGeoff = document.getElementById('btn-export-geoff');
+  if (btnGeoff) {
+    btnGeoff.addEventListener('click', () => exportWordDoc('geoff'));
+  }
+}
+
+// 10. Word Document Generation
+function exportWordDoc(format = 'standard') {
+  const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
+
+  const getSetStatsData = (containerId) => {
+    const container = document.getElementById(containerId);
+    if (!container) return { count: 0, mins: 0 };
+    const cards = container.querySelectorAll('.song-card');
+    let totalSec = 0;
+    let songCount = 0;
+
+    cards.forEach(c => {
+      if (c.getAttribute('data-cue') === 'true') return;
+      songCount++;
+      const durStr = c.getAttribute('data-duration') || '3:00';
+      const parts = durStr.split(':').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        totalSec += (parts[0] * 60) + parts[1];
+      } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        totalSec += (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      } else {
+        totalSec += 180;
+      }
+    });
+
+    return { count: songCount, mins: Math.round(totalSec / 60) };
+  };
+
+  const buildSetHtml = (listId, resId, label) => {
+    const mainCards = document.querySelectorAll(`#${listId} .song-card`);
+    const resCards = document.querySelectorAll(`#${resId} .song-card`);
+    if (mainCards.length === 0 && resCards.length === 0) return '';
+
+    const stats = getSetStatsData(listId);
+
+    const headerStyle = format === 'geoff'
+      ? 'color: #000000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 6pt; text-transform: uppercase;'
+      : 'color: #000000; font-size: 14pt; font-weight: bold; text-transform: uppercase; margin-bottom: 6pt;';
+
+    let html = `<div style="${headerStyle}">${label}</div>`;
+
+    mainCards.forEach(c => {
+      const isCue = c.getAttribute('data-cue') === 'true';
+      const title = c.getAttribute('data-title') || c.innerText.trim();
+
+      if (isCue) {
+        if (format === 'geoff') {
+          html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        } else {
+          html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        }
+      } else {
+        if (format === 'geoff') {
+          html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        } else {
+          html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+        }
+      }
+    });
+
+    if (stats.count > 0) {
+      if (format === 'geoff') {
+        html += `<div style="color: #C00000; font-size: 15pt; font-weight: normal; margin-top: 8pt; margin-bottom: 8pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+      } else {
+        html += `<div style="color: #000000; font-size: 13.5pt; font-weight: normal; margin-top: 6pt; margin-bottom: 6pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+      }
+    }
+
+    if (resCards.length > 0) {
+      const resHeaderStyle = format === 'geoff'
+        ? 'color: #C00000; font-size: 18pt; font-weight: normal; text-decoration: none; margin-top: 10pt; margin-bottom: 4pt;'
+        : 'color: #000000; font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt;';
+
+      html += `<div style="${resHeaderStyle}">Reserve</div>`;
+
+      resCards.forEach(c => {
+        const isCue = c.getAttribute('data-cue') === 'true';
+        const title = c.getAttribute('data-title') || c.innerText.trim();
+
+        if (isCue) {
+          if (format === 'geoff') {
+            html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          } else {
+            html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          }
+        } else {
+          if (format === 'geoff') {
+            html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          } else {
+            html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
+          }
+        }
+      });
+    }
+
+    return html;
+  };
+
+  const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
+  const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
+
+  const titleStyle = format === 'geoff'
+    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
+    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
+
+  const docContent = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+      <meta charset='utf-8'>
+      <title>${escapeHtml(gigTitle)}</title>
+      <style>
+        @page { size: 8.5in 11in; margin: 0.75in; }
+        body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
+        table { width: 100%; border-collapse: collapse; }
+        td { width: 50%; vertical-align: top; padding-right: 20pt; }
+        td + td { padding-right: 0; padding-left: 20pt; }
+      </style>
+    </head>
+    <body>
+      <div style="${titleStyle}">${escapeHtml(gigTitle)}</div>
+      <table><tr><td>${col1Html}</td><td>${col2Html}</td></tr></table>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${gigTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${format}.doc`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
