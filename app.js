@@ -67,7 +67,6 @@ async function loadSheetCSV() {
     pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Loading songs from Google Sheet...</div>';
   }
 
-  // Direct CSV export URL
   const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 
   try {
@@ -226,8 +225,8 @@ function createSongCard(song) {
     </div>
     <div class="flex items-center justify-between text-[10px] pointer-events-none">
       <div class="flex items-center gap-1.5">
-        <span class="px-1.5 py-0.5 rounded font-mono font-bold ${song.ready === 'A' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-blue-950 text-blue-400 border border-blue-800'}">
-          Ready ${song.ready}
+        <span class="px-1.5 py-0.5 rounded font-mono font-bold ${song.ready === 'A' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : (song.ready === 'B' ? 'bg-blue-950 text-blue-400 border border-blue-800' : 'bg-slate-800 text-slate-300 border border-slate-700')}">
+          ${song.ready ? `Ready ${song.ready}` : 'Custom'}
         </span>
         ${song.pBass ? '<span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold">🎸 Bass</span>' : ''}
         ${song.horns ? '<span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold">🎺 Horns</span>' : ''}
@@ -433,7 +432,8 @@ function setupImportModal() {
 
 function parseAndImportText(text) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  let currentTarget = document.getElementById('set1-list');
+  let currentTarget = null;
+  let parsedTitle = null;
 
   // Clear existing sets before importing
   document.getElementById('set1-list').innerHTML = '';
@@ -441,42 +441,93 @@ function parseAndImportText(text) {
   document.getElementById('set2-list').innerHTML = '';
   document.getElementById('set2-res-list').innerHTML = '';
 
-  lines.forEach(line => {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const upper = line.toUpperCase();
 
-    // Section headers
+    // 1. Check for Set / Section Headers
     if (upper.includes('SET ONE') || upper.includes('SET 1')) {
       currentTarget = document.getElementById('set1-list');
-      return;
+      continue;
     }
     if (upper.includes('SET TWO') || upper.includes('SET 2')) {
       currentTarget = document.getElementById('set2-list');
-      return;
+      continue;
     }
     if (upper.includes('RESERVE') || upper.includes('ALTERNATES')) {
+      // Default to Set 2 reserve if we're past Set 1, otherwise Set 1 reserve
       if (currentTarget === document.getElementById('set1-list')) {
         currentTarget = document.getElementById('set1-res-list');
       } else {
         currentTarget = document.getElementById('set2-res-list');
       }
-      return;
+      continue;
     }
 
-    // Strip leading numbering, bullets, dashes (e.g., "1. Song", "- Song", "1 ) Song")
-    const cleanedLine = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
-    if (!cleanedLine) return;
+    // 2. Text encountered BEFORE any set header is treated as the Setlist / Gig Title
+    if (!currentTarget) {
+      if (!parsedTitle) {
+        parsedTitle = line;
+        const gigTitleInput = document.getElementById('gig-title');
+        if (gigTitleInput) gigTitleInput.value = line;
+      }
+      continue;
+    }
 
-    // Direct match against known songs (case-insensitive)
-    const normalizedInput = cleanedLine.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const matchedSong = allSongs.find(s => s.title.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedInput);
+    // 3. Ignore summary lines (e.g. "15 songs 60 mins.", "15 Songs – 60 mins.", "12 songs", "45 mins")
+    if (/\b\d+\s*songs?\b/i.test(line) || /\b\d+\s*mins?\.?\b/i.test(line)) {
+      continue;
+    }
+
+    // 4. Strip leading numbering, bullets, dashes (e.g., "1. Song", "- Song", "1 ) Song")
+    const cleanedLine = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
+    if (!cleanedLine) continue;
+
+    const lowerCleaned = cleanedLine.toLowerCase();
+
+    // 5. Cues logic:
+    // Anything starting with "switch", "cue:", or explicitly designated cues
+    const isExplicitCue = /^switch\b/i.test(cleanedLine) ||
+                          /^cue\s*:/i.test(cleanedLine) ||
+                          lowerCleaned === 'acoustic guitar' ||
+                          lowerCleaned === 'break' ||
+                          lowerCleaned === 'intermission';
+
+    if (isExplicitCue) {
+      currentTarget.appendChild(createCueCard(cleanedLine));
+      continue;
+    }
+
+    // 6. Song Matching:
+    // Try exact alphanumeric match against allSongs from the sheet
+    const normLine = lowerCleaned.replace(/[^a-z0-9]/g, '');
+    let matchedSong = allSongs.find(s => s.title.toLowerCase().replace(/[^a-z0-9]/g, '') === normLine);
+
+    // If no direct alphanumeric match, try containment match (e.g. "Fly Me to the Moon" matching "Fly Me To The Moon (In Other Words)")
+    if (!matchedSong && normLine.length > 5) {
+      matchedSong = allSongs.find(s => {
+        const normSheet = s.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return normSheet.includes(normLine) || normLine.includes(normSheet);
+      });
+    }
 
     if (matchedSong) {
       currentTarget.appendChild(createSongCard(matchedSong));
     } else {
-      // If it doesn't match a song title in the pool, treat as a stage cue
-      currentTarget.appendChild(createCueCard(cleanedLine));
+      // 7. Unknown song: Default to treating as a regular SONG rather than a cue!
+      const fallbackSong = {
+        id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        title: cleanedLine,
+        genre: 'Other',
+        ready: '',
+        pBass: false,
+        horns: false,
+        duration: '3:00',
+        isHoliday: /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(cleanedLine)
+      };
+      currentTarget.appendChild(createSongCard(fallbackSong));
     }
-  });
+  }
 
   updateSetStats();
   renderPool();
