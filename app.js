@@ -1,11 +1,13 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence + Guaranteed Pool Render
+ * app.js - Direct GViz Data Ingestion + LocalStorage Persistence + Reliable Geoff Word Export
  */
 
 const STORAGE_KEY = 'capejazz_saved_state';
+const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
+const SHEET_GID = '477864766';
 
-// Visual error catcher: surface errors directly to the on-screen error banner
+// Global error catcher to surface errors onto the top banner
 window.addEventListener('error', (event) => {
   const banner = document.getElementById('error-banner');
   const msg = document.getElementById('error-msg');
@@ -14,9 +16,6 @@ window.addEventListener('error', (event) => {
     msg.innerText = `${event.message} (${event.filename ? event.filename.split('/').pop() : 'script'}:${event.lineno})`;
   }
 });
-
-const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
-const SHEET_GID = '477864766';
 
 // Global app handlers exposed immediately before any DOM event runs
 window.app = {
@@ -41,11 +40,11 @@ let allSongs = [];
 let activeFilter = 'all';
 let showHoliday = false;
 
-// Initialize as soon as DOM is ready or immediately if already loaded
+// Initialize on DOM Ready
 function startApp() {
   initSortable();
   setupEventListeners();
-  loadSheetCSV();
+  loadSheetGViz();
 }
 
 if (document.readyState === 'loading') {
@@ -65,148 +64,125 @@ function setDefaultTitle() {
   titleInput.value = `Set List ${m}/${d}/${yy}`;
 }
 
-// 2. Fetch CSV Directly from Google Sheets
-async function loadSheetCSV() {
+// 2. Fetch Data using GViz JSONP (bypasses browser CORS & redirects)
+function loadSheetGViz() {
   const pool = document.getElementById('pool-list');
   if (pool) {
-    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Loading songs from Google Sheet...</div>';
+    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Connecting to Google Sheet...</div>';
   }
 
-  const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+  // Remove any previous gviz script tag
+  const existing = document.getElementById('gviz-jsonp');
+  if (existing) existing.remove();
 
-  try {
-    const res = await fetch(csvUrl);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: Ensure Google Sheet is shared with 'Anyone with the link can view'`);
-    }
-    const csvText = await res.text();
-    parseCSVAndIngest(csvText);
-  } catch (err) {
-    console.error('Sheet fetch error:', err);
+  const script = document.createElement('script');
+  script.id = 'gviz-jsonp';
+  script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:handleGvizResponse&gid=${SHEET_GID}`;
+  script.onerror = () => {
     if (pool) {
       pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/80 border border-rose-800 rounded text-xs leading-relaxed">
-        <strong>Error loading songs:</strong><br>${err.message}
+        <strong>Connection Error:</strong> Failed to load Google Sheet. Verify the sheet is shared as "Anyone with link can view".
       </div>`;
     }
-    const banner = document.getElementById('error-banner');
-    const msg = document.getElementById('error-msg');
-    if (banner && msg) {
-      banner.classList.remove('hidden');
-      msg.innerText = `Google Sheet Load Failure: ${err.message}`;
-    }
-  }
+  };
+  document.body.appendChild(script);
 }
 
-// 3. Robust CSV Parser
-function parseCSV(text) {
-  const lines = [];
-  let row = [''];
-  let inQuotes = false;
+// 3. GViz JSONP Response Handler
+window.handleGvizResponse = function(response) {
+  try {
+    if (!response || !response.table || !response.table.rows) {
+      throw new Error('Malformed data table returned from Google Sheet');
+    }
 
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
+    const rows = response.table.rows;
+    allSongs = [];
 
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        row[row.length - 1] += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
+    // Identify header row and map columns dynamically
+    let colTitle = 0;
+    let colGenre = 2;
+    let colReady = 5;
+    let colPBass = 6;
+    let colHorns = 7;
+    let colTime = 10;
+    let dataStartIndex = 3;
+
+    // Scan first 5 rows to locate header positions if possible
+    for (let r = 0; r < Math.min(5, rows.length); r++) {
+      const rowCells = rows[r].c || [];
+      for (let c = 0; c < rowCells.length; c++) {
+        const val = (rowCells[c]?.v || '').toString().toLowerCase().trim();
+        if (val === 'title' || val.includes('song title')) {
+          colTitle = c;
+          dataStartIndex = r + 1;
+        } else if (val === 'genre') {
+          colGenre = c;
+        } else if (val === 'ready') {
+          colReady = c;
+        } else if (val.includes('bass') || val.includes('phil')) {
+          colPBass = c;
+        } else if (val.includes('horn')) {
+          colHorns = c;
+        } else if (val.includes('time') || val.includes('duration')) {
+          colTime = c;
+        }
       }
-    } else if (char === ',' && !inQuotes) {
-      row.push('');
-    } else if ((char === '\r' || char === '\n') && !inQuotes) {
-      if (char === '\r' && next === '\n') i++;
-      lines.push(row);
-      row = [''];
-    } else {
-      row[row.length - 1] += char;
-    }
-  }
-  if (row.length > 1 || row[0] !== '') lines.push(row);
-  return lines;
-}
-
-// 4. Ingest & Gate Data
-function parseCSVAndIngest(csvText) {
-  const rows = parseCSV(csvText);
-  allSongs = [];
-
-  // Locate the header row dynamically
-  let headerRowIndex = -1;
-  let colTitle = 0;
-  let colGenre = 2;
-  let colReady = 5;
-  let colPBass = 6;
-  let colHorns = 7;
-  let colTime = 10;
-
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const r = rows[i].map(c => (c || '').toLowerCase().trim());
-    const tIdx = r.findIndex(c => c === 'title' || c.includes('song title'));
-    if (tIdx !== -1) {
-      headerRowIndex = i;
-      colTitle = tIdx;
-      const gIdx = r.findIndex(c => c === 'genre');
-      if (gIdx !== -1) colGenre = gIdx;
-      const rIdx = r.findIndex(c => c === 'ready');
-      if (rIdx !== -1) colReady = rIdx;
-      const pIdx = r.findIndex(c => c.includes('bass') || c.includes('phil'));
-      if (pIdx !== -1) colPBass = pIdx;
-      const hIdx = r.findIndex(c => c.includes('horn'));
-      if (hIdx !== -1) colHorns = hIdx;
-      const dIdx = r.findIndex(c => c.includes('time') || c.includes('duration'));
-      if (dIdx !== -1) colTime = dIdx;
-      break;
-    }
-  }
-
-  const startIndex = headerRowIndex !== -1 ? headerRowIndex + 1 : 3;
-
-  for (let i = startIndex; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r || r.length === 0) continue;
-
-    const title = (r[colTitle] || '').trim();
-    const genre = (r[colGenre] || '').trim();
-    const rawReady = (r[colReady] || '').trim().toUpperCase();
-    const rawPBass = (r[colPBass] || '').trim();
-    const rawHorns = (r[colHorns] || '').trim();
-    const rawTime = (r[colTime] || '').trim();
-
-    // STRICT CRITERION: Title must exist AND Ready must be strictly 'A' or 'B'
-    if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
-      continue;
     }
 
-    const isHoliday = /holiday/i.test(genre) ||
-                      /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
+    for (let i = dataStartIndex; i < rows.length; i++) {
+      const cells = rows[i].c || [];
 
-    allSongs.push({
-      id: `song_${i}_${title.replace(/[^a-zA-Z0-9]/g, '')}`,
-      title,
-      genre,
-      ready: rawReady,
-      pBass: rawPBass !== '' && rawPBass !== '0' && rawPBass.toLowerCase() !== 'no',
-      horns: rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no',
-      duration: rawTime || '3:00',
-      isHoliday
-    });
+      const getCellStr = (idx) => {
+        if (!cells[idx]) return '';
+        return (cells[idx].f || cells[idx].v || '').toString().trim();
+      };
+
+      const title = getCellStr(colTitle);
+      const genre = getCellStr(colGenre);
+      const rawReady = getCellStr(colReady).toUpperCase();
+      const rawPBass = getCellStr(colPBass);
+      const rawHorns = getCellStr(colHorns);
+      const rawTime = getCellStr(colTime);
+
+      // STRICT RULE: Must have a Title and Ready must be strictly 'A' or 'B'
+      if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
+        continue;
+      }
+
+      const isHoliday = /holiday/i.test(genre) ||
+                        /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
+
+      allSongs.push({
+        id: `song_${i}_${title.replace(/[^a-zA-Z0-9]/g, '')}`,
+        title,
+        genre,
+        ready: rawReady,
+        pBass: rawPBass !== '' && rawPBass !== '0' && rawPBass.toLowerCase() !== 'no',
+        horns: rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no',
+        duration: rawTime || '3:00',
+        isHoliday
+      });
+    }
+
+    console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
+
+    const hasRestored = restoreSavedState();
+    if (!hasRestored) {
+      setDefaultTitle();
+    }
+
+    renderPool();
+    updateSetStats();
+  } catch (err) {
+    console.error('GViz ingestion error:', err);
+    const pool = document.getElementById('pool-list');
+    if (pool) {
+      pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/80 border border-rose-800 rounded text-xs leading-relaxed">
+        <strong>Ingestion Error:</strong><br>${err.message}
+      </div>`;
+    }
   }
-
-  console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
-
-  // Try to restore saved sets; if no valid items restored, set default title
-  const hasRestored = restoreSavedState();
-  if (!hasRestored) {
-    setDefaultTitle();
-  }
-
-  // Always force-render candidate pool and stats
-  renderPool();
-  updateSetStats();
-}
+};
 
 // Determine genre CSS class
 function getGenreTitleClass(song) {
@@ -217,24 +193,23 @@ function getGenreTitleClass(song) {
   return 'title-other'[cite: 1];
 }
 
-// 5. Render Candidate Cards to #pool-list
+// 4. Render Candidate Cards to #pool-list
 function renderPool() {
   const pool = document.getElementById('pool-list');
   const countBadge = document.getElementById('pool-count');
   if (!pool) return;
 
-  const assignedIds = new Set();
+  const assigned = new Set();
   document.querySelectorAll('#set1-list .song-card, #set1-res-list .song-card, #set2-list .song-card, #set2-res-list .song-card').forEach(el => {
     const id = el.getAttribute('data-id');
     const title = (el.getAttribute('data-title') || '').toLowerCase().trim();
-    if (id && !id.startsWith('custom_')) assignedIds.add(id);
-    if (title) assignedIds.add(title);
+    if (id && !id.startsWith('custom_')) assigned.add(id);
+    if (title) assigned.add(title);
   });
 
   const visibleSongs = allSongs.filter(song => {
-    // Check by unique ID or matching normalized title
-    if (assignedIds.has(song.id)) return false;
-    if (assignedIds.has(song.title.toLowerCase().trim())) return false;
+    if (assigned.has(song.id)) return false;
+    if (assigned.has(song.title.toLowerCase().trim())) return false;
 
     if (song.isHoliday && !showHoliday) return false;
 
@@ -257,7 +232,7 @@ function renderPool() {
   }
 }
 
-// 6. Song Card Builder
+// 5. Song Card Builder
 function createSongCard(song) {
   const card = document.createElement('div');
   const holidayCardClass = song.isHoliday ? 'genre-holiday-card' : '';
@@ -323,7 +298,7 @@ function escapeHtml(str) {
   }[tag] || tag));
 }
 
-// 7. SortableJS Drag & Drop
+// 6. SortableJS Drag & Drop
 function initSortable() {
   if (typeof Sortable === 'undefined') {
     console.warn('SortableJS library not loaded.');
@@ -355,7 +330,7 @@ function initSortable() {
   });
 }
 
-// 8. Timings & Counts
+// 7. Timings & Counts
 function updateSetStats() {
   calculateColumnStats('set1-list', 'set1-count', 'set1-time');
   calculateColumnStats('set2-list', 'set2-count', 'set2-time');
@@ -393,7 +368,7 @@ function calculateColumnStats(containerId, countId, timeId) {
   }
 }
 
-// 9. LocalStorage Persistence Engine
+// 8. LocalStorage Persistence Engine
 function saveCurrentState() {
   try {
     const serializeContainer = (id) => {
@@ -425,7 +400,6 @@ function saveCurrentState() {
     const set2 = serializeContainer('set2-list');
     const set2Res = serializeContainer('set2-res-list');
 
-    // Only save if there's actually something present
     if (set1.length === 0 && set1Res.length === 0 && set2.length === 0 && set2Res.length === 0) {
       localStorage.removeItem(STORAGE_KEY);
       return;
@@ -498,7 +472,7 @@ function restoreSavedState() {
   }
 }
 
-// 10. Event Listeners & UI Hooks
+// 9. Event Listeners & UI Hooks
 function setupEventListeners() {
   const titleInput = document.getElementById('gig-title');
   if (titleInput) {
@@ -509,7 +483,7 @@ function setupEventListeners() {
   if (syncBtn) {
     syncBtn.addEventListener('click', () => {
       localStorage.removeItem(STORAGE_KEY);
-      loadSheetCSV();
+      loadSheetGViz();
     });
   }
 
@@ -574,7 +548,7 @@ function setupEventListeners() {
   setupImportModal();
 }
 
-// 11. Plain Text Import Modal Logic
+// 10. Plain Text Import Modal Logic
 function setupImportModal() {
   const importModal = document.getElementById('import-modal');
   const openBtn = document.getElementById('btn-open-import-modal');
@@ -697,7 +671,7 @@ function parseAndImportText(text) {
   saveCurrentState();
 }
 
-// 12. Word Document Generation
+// 11. Word Document Generation
 function exportWordDoc(format = 'standard') {
   const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
 
