@@ -1,7 +1,9 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * app.js - Direct CSV Ingestion matching index.html IDs
+ * app.js - Direct CSV Ingestion matching index.html IDs + Isolated LocalStorage Persistence
  */
+
+const STORAGE_KEY = 'capejazz_saved_state';
 
 // Visual error catcher: surface errors directly to the on-screen error banner
 window.addEventListener('error', (event) => {
@@ -26,8 +28,12 @@ window.app = {
 
     target.appendChild(createCueCard(text.trim()));
     updateSetStats();
+    saveCurrentState();
   },
-  updateStats: () => updateSetStats()
+  updateStats: () => {
+    updateSetStats();
+    saveCurrentState();
+  }
 };
 
 // State
@@ -37,7 +43,6 @@ let showHoliday = false;
 
 // Initialize as soon as DOM is ready or immediately if already loaded
 function startApp() {
-  setDefaultTitle();
   initSortable();
   setupEventListeners();
   loadSheetCSV();
@@ -128,7 +133,6 @@ function parseCSVAndIngest(csvText) {
   const rows = parseCSV(csvText);
   allSongs = [];
 
-  // Data starts at Sheet Row 4 (index 3). Row index 2 contains headers.
   for (let i = 3; i < rows.length; i++) {
     const r = rows[i];
     if (!r || r.length === 0) continue;
@@ -140,7 +144,6 @@ function parseCSVAndIngest(csvText) {
     const rawHorns = (r[7] || '').trim();
     const rawTime = (r[10] || '').trim();
 
-    // STRICT CRITERION: Title must exist AND Ready must be strictly 'A' or 'B'
     if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
       continue;
     }
@@ -161,6 +164,11 @@ function parseCSVAndIngest(csvText) {
   }
 
   console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
+
+  const hasRestored = restoreSavedState();
+  if (!hasRestored) {
+    setDefaultTitle();
+  }
   renderPool();
 }
 
@@ -215,6 +223,11 @@ function createSongCard(song) {
   card.setAttribute('data-id', song.id);
   card.setAttribute('data-title', song.title);
   card.setAttribute('data-duration', song.duration);
+  card.setAttribute('data-genre', song.genre || '');
+  card.setAttribute('data-ready', song.ready || '');
+  card.setAttribute('data-pbass', song.pBass ? 'true' : 'false');
+  card.setAttribute('data-horns', song.horns ? 'true' : 'false');
+  card.setAttribute('data-isholiday', song.isHoliday ? 'true' : 'false');
 
   const titleClass = getGenreTitleClass(song);
 
@@ -252,6 +265,7 @@ function createCueCard(text) {
     e.stopPropagation();
     card.remove();
     updateSetStats();
+    saveCurrentState();
   });
 
   return card;
@@ -293,6 +307,7 @@ function initSortable() {
         if (evt.to.id === 'pool-list' || evt.from.id === 'pool-list') {
           renderPool();
         }
+        saveCurrentState();
       }
     });
   });
@@ -336,8 +351,97 @@ function calculateColumnStats(containerId, countId, timeId) {
   }
 }
 
-// 9. Event Listeners & UI Hooks
+// 9. LocalStorage Persistence Engine (Completely Local to Browser)
+function saveCurrentState() {
+  try {
+    const serializeContainer = (id) => {
+      const container = document.getElementById(id);
+      if (!container) return [];
+      const items = [];
+      container.querySelectorAll('.song-card').forEach(c => {
+        if (c.getAttribute('data-cue') === 'true') {
+          items.push({ type: 'cue', title: c.getAttribute('data-title') });
+        } else {
+          items.push({
+            type: 'song',
+            id: c.getAttribute('data-id'),
+            title: c.getAttribute('data-title'),
+            duration: c.getAttribute('data-duration'),
+            genre: c.getAttribute('data-genre'),
+            ready: c.getAttribute('data-ready'),
+            pBass: c.getAttribute('data-pbass') === 'true',
+            horns: c.getAttribute('data-horns') === 'true',
+            isHoliday: c.getAttribute('data-isholiday') === 'true'
+          });
+        }
+      });
+      return items;
+    };
+
+    const state = {
+      title: document.getElementById('gig-title')?.value || '',
+      set1: serializeContainer('set1-list'),
+      set1Res: serializeContainer('set1-res-list'),
+      set2: serializeContainer('set2-list'),
+      set2Res: serializeContainer('set2-res-list')
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (err) {
+    console.warn('LocalStorage save failed:', err);
+  }
+}
+
+function restoreSavedState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    if (!state) return false;
+
+    if (state.title) {
+      const gigTitle = document.getElementById('gig-title');
+      if (gigTitle) gigTitle.value = state.title;
+    }
+
+    const restoreContainer = (id, items) => {
+      const container = document.getElementById(id);
+      if (!container || !Array.isArray(items)) return;
+      container.innerHTML = '';
+      items.forEach(item => {
+        if (item.type === 'cue') {
+          container.appendChild(createCueCard(item.title));
+        } else {
+          const knownSong = allSongs.find(s => s.id === item.id);
+          if (knownSong) {
+            container.appendChild(createSongCard(knownSong));
+          } else {
+            container.appendChild(createSongCard(item));
+          }
+        }
+      });
+    };
+
+    restoreContainer('set1-list', state.set1);
+    restoreContainer('set1-res-list', state.set1Res);
+    restoreContainer('set2-list', state.set2);
+    restoreContainer('set2-res-list', state.set2Res);
+
+    updateSetStats();
+    return true;
+  } catch (err) {
+    console.warn('LocalStorage restore failed:', err);
+    return false;
+  }
+}
+
+// 10. Event Listeners & UI Hooks
 function setupEventListeners() {
+  const titleInput = document.getElementById('gig-title');
+  if (titleInput) {
+    titleInput.addEventListener('input', () => saveCurrentState());
+  }
+
   const syncBtn = document.getElementById('btn-reload-sheet');
   if (syncBtn) {
     syncBtn.addEventListener('click', () => loadSheetCSV());
@@ -346,10 +450,16 @@ function setupEventListeners() {
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
+      const confirmed = confirm("Are you sure you want to reset all sets? This will clear your current layout.");
+      if (!confirmed) return;
+
       document.getElementById('set1-list').innerHTML = '';
       document.getElementById('set1-res-list').innerHTML = '';
       document.getElementById('set2-list').innerHTML = '';
       document.getElementById('set2-res-list').innerHTML = '';
+
+      localStorage.removeItem(STORAGE_KEY);
+      setDefaultTitle();
       updateSetStats();
       renderPool();
     });
@@ -395,11 +505,10 @@ function setupEventListeners() {
     btnGeoff.addEventListener('click', () => exportWordDoc('geoff'));
   }
 
-  // Setup Plain Text Import Modal
   setupImportModal();
 }
 
-// 10. Plain Text Import Modal Logic
+// 11. Plain Text Import Modal Logic
 function setupImportModal() {
   const importModal = document.getElementById('import-modal');
   const openBtn = document.getElementById('btn-open-import-modal');
@@ -435,7 +544,6 @@ function parseAndImportText(text) {
   let currentTarget = null;
   let parsedTitle = null;
 
-  // Clear existing sets before importing
   document.getElementById('set1-list').innerHTML = '';
   document.getElementById('set1-res-list').innerHTML = '';
   document.getElementById('set2-list').innerHTML = '';
@@ -445,7 +553,6 @@ function parseAndImportText(text) {
     const line = lines[i];
     const upper = line.toUpperCase();
 
-    // 1. Check for Set / Section Headers
     if (upper.includes('SET ONE') || upper.includes('SET 1')) {
       currentTarget = document.getElementById('set1-list');
       continue;
@@ -455,7 +562,6 @@ function parseAndImportText(text) {
       continue;
     }
     if (upper.includes('RESERVE') || upper.includes('ALTERNATES')) {
-      // Default to Set 2 reserve if we're past Set 1, otherwise Set 1 reserve
       if (currentTarget === document.getElementById('set1-list')) {
         currentTarget = document.getElementById('set1-res-list');
       } else {
@@ -464,7 +570,6 @@ function parseAndImportText(text) {
       continue;
     }
 
-    // 2. Text encountered BEFORE any set header is treated as the Setlist / Gig Title
     if (!currentTarget) {
       if (!parsedTitle) {
         parsedTitle = line;
@@ -474,19 +579,15 @@ function parseAndImportText(text) {
       continue;
     }
 
-    // 3. Ignore summary lines (e.g. "15 songs 60 mins.", "15 Songs – 60 mins.", "12 songs", "45 mins")
     if (/\b\d+\s*songs?\b/i.test(line) || /\b\d+\s*mins?\.?\b/i.test(line)) {
       continue;
     }
 
-    // 4. Strip leading numbering, bullets, dashes (e.g., "1. Song", "- Song", "1 ) Song")
     const cleanedLine = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
     if (!cleanedLine) continue;
 
     const lowerCleaned = cleanedLine.toLowerCase();
 
-    // 5. Cues logic:
-    // Anything starting with "switch", "cue:", or explicitly designated cues
     const isExplicitCue = /^switch\b/i.test(cleanedLine) ||
                           /^cue\s*:/i.test(cleanedLine) ||
                           lowerCleaned === 'acoustic guitar' ||
@@ -498,12 +599,9 @@ function parseAndImportText(text) {
       continue;
     }
 
-    // 6. Song Matching:
-    // Try exact alphanumeric match against allSongs from the sheet
     const normLine = lowerCleaned.replace(/[^a-z0-9]/g, '');
     let matchedSong = allSongs.find(s => s.title.toLowerCase().replace(/[^a-z0-9]/g, '') === normLine);
 
-    // If no direct alphanumeric match, try containment match (e.g. "Fly Me to the Moon" matching "Fly Me To The Moon (In Other Words)")
     if (!matchedSong && normLine.length > 5) {
       matchedSong = allSongs.find(s => {
         const normSheet = s.title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -514,7 +612,6 @@ function parseAndImportText(text) {
     if (matchedSong) {
       currentTarget.appendChild(createSongCard(matchedSong));
     } else {
-      // 7. Unknown song: Default to treating as a regular SONG rather than a cue!
       const fallbackSong = {
         id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         title: cleanedLine,
@@ -531,9 +628,10 @@ function parseAndImportText(text) {
 
   updateSetStats();
   renderPool();
+  saveCurrentState();
 }
 
-// 11. Word Document Generation
+// 12. Word Document Generation
 function exportWordDoc(format = 'standard') {
   const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
 
