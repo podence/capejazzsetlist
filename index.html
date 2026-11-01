@@ -4,25 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cape Jazz &amp; Blues Setlist Builder</title>
-
+  
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SortableJS CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-
+  
   <!-- Custom Styles -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
 
+  <!-- PUBLIC NOTICE BANNER -->
+  <aside aria-label="Work in progress notice" class="bg-amber-500 text-slate-950 px-4 py-2 text-center text-xs md:text-sm font-extrabold tracking-widest uppercase shadow-md flex items-center justify-center gap-2">
+    <span>⚠️</span>
+    <span>CONSTRUCTION ZONE — ADDING FEATURES AND DEBUGGING</span>
+    <span>⚠️</span>
+  </aside>
+
   <!-- Visual Error Boundary Banner -->
   <div id="error-banner" class="hidden bg-rose-600 text-white px-4 py-3 fixed top-0 left-0 right-0 z-50 shadow-xl border-b border-rose-400">
     <div class="max-w-7xl mx-auto flex items-start justify-between">
       <div>
-        <p class="font-bold tracking-wide">Application Runtime Notice</p>
-        <p id="error-msg" class="text-xs font-mono mt-1 opacity-95"></p>
+        <p class="font-bold tracking-wide">Application Runtime Error</p>
+        <p id="error-msg" class="text-sm font-mono mt-1 opacity-95"></p>
       </div>
-      <button type="button" onclick="document.getElementById('error-banner').classList.add('hidden')" class="px-2.5 py-1 text-xs bg-rose-800 hover:bg-rose-900 rounded font-bold transition">Dismiss</button>
+      <button onclick="document.getElementById('error-banner').classList.add('hidden')" class="px-2 py-1 text-sm bg-rose-800 hover:bg-rose-900 rounded font-bold">Dismiss</button>
     </div>
   </div>
 
@@ -38,39 +45,34 @@
           type="text" 
           value="Set List Name" 
           class="bg-slate-950 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded px-3 py-1.5 font-bold text-lg text-white focus:outline-none transition w-60 md:w-80"
-          placeholder="Set List Name"
+          placeholder="Gig / Setlist Name"
         />
       </div>
 
       <!-- Action Buttons -->
       <div class="flex flex-wrap items-center gap-2">
         <button id="btn-reset" class="btn-action bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-200 font-semibold shadow-sm">
-          ↺ Reset
+          ↺ Reset All
         </button>
-        <button id="btn-reload-sheet" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Re-sync rows via Google Sheets GViz">
+        <button id="btn-reload-sheet" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Re-sync latest rows directly from Google Sheet">
           🔄 Sync Sheet
         </button>
-        <button id="btn-open-paste-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Paste raw sheet TSV/CSV data manually">
-          📋 Paste Sheet
-        </button>
         <button id="btn-open-import-modal" class="btn-action bg-slate-800 hover:bg-slate-700 text-slate-200" title="Parse plain text setlist">
-          📥 Import Setlist
+          📥 Import Text
         </button>
 
         <!-- Export Dropdown -->
         <div class="relative inline-block text-left">
           <button id="btn-export-dropdown" class="btn-action bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center gap-2">
-            <span>📄 Download Doc</span>
+            <span>📄 Export Word</span>
             <span class="text-xs">▼</span>
           </button>
-          <div id="export-menu" class="hidden absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl py-1 z-40">
-            <button id="btn-export-standard" class="w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition">
-              <span class="font-semibold block">Standard Format</span>
-              <span class="block text-xs text-slate-400">Aptos 13.5pt, clean print layout</span>
+          <div id="export-menu" class="hidden absolute right-0 mt-2 w-52 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl py-1 z-40">
+            <button id="btn-export-standard" class="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition">
+              Standard Format <span class="block text-xs text-slate-400">Aptos 13.5pt, clean</span>
             </button>
-            <button id="btn-export-geoff" class="w-full text-left px-4 py-2.5 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition border-t border-slate-800">
-              <span class="font-semibold text-rose-300 block">Geoff's Format</span>
-              <span class="block text-xs text-slate-400">Calibri, red headers, blue titles</span>
+            <button id="btn-export-geoff" class="w-full text-left px-4 py-2 text-sm text-slate-200 hover:bg-cyan-950 hover:text-cyan-200 transition border-t border-slate-800">
+              Geoff's Format <span class="block text-xs text-slate-400">Calibri, styled</span>
             </button>
           </div>
         </div>
@@ -82,17 +84,17 @@
   <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
     
     <!-- Column 1: Candidates Pool -->
-    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-140px)] min-h-[580px]">
+    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-175px)]">
       <div class="pb-3 border-b border-slate-800">
         <div class="flex items-center justify-between mb-2">
           <h2 class="font-bold text-slate-200 uppercase tracking-wider text-sm flex items-center gap-2">
-            Candidates Pool <span id="pool-count" class="badge-count">0</span>
+            Candidate Pool <span id="pool-count" class="badge-count">0</span>
           </h2>
         </div>
 
-        <!-- Filter Chips -->
+        <!-- Filter Chips: Categories + Holiday Modifier -->
         <div class="flex flex-wrap items-center gap-1.5 text-xs">
-          <div class="flex flex-wrap gap-1">
+          <div class="flex gap-1.5">
             <button data-filter="all" class="chip active">All</button>
             <button data-filter="readyA" class="chip">Ready A</button>
             <button data-filter="readyB" class="chip">Ready B</button>
@@ -101,24 +103,17 @@
           </div>
           <span class="text-slate-600 font-mono">|</span>
           <button id="btn-holiday-toggle" class="chip chip-holiday">
-            🎅 Holiday
+            🎅 + Holiday
           </button>
         </div>
       </div>
 
-      <!-- Persistent Cue + Cards Pool -->
-      <div class="pt-2">
-        <button id="btn-persistent-cue" class="w-full text-left px-3 py-2 rounded border border-dashed border-rose-800/80 bg-rose-950/20 hover:bg-rose-950/40 text-rose-300 text-xs font-medium transition flex items-center justify-between">
-          <span>📌 + Switch guitars (add to Set 1)</span>
-          <span class="text-[11px] font-mono text-rose-400 font-bold">+</span>
-        </button>
-      </div>
-
-      <div id="pool-list" class="flex-1 overflow-y-auto mt-2 pr-1 space-y-2 card-dropzone"></div>
+      <!-- Scrollable Cards Pool -->
+      <div id="pool-list" class="flex-1 overflow-y-auto mt-3 pr-1 space-y-2 card-dropzone"></div>
     </section>
 
     <!-- Column 2: Set One -->
-    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-140px)] min-h-[580px]">
+    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-175px)]">
       <div class="pb-3 border-b border-slate-800 flex items-center justify-between">
         <div>
           <h2 class="font-bold text-cyan-400 uppercase tracking-wider text-sm">SET ONE</h2>
@@ -131,7 +126,7 @@
         <!-- Main Set 1 list -->
         <div class="flex-1 overflow-y-auto pr-1 flex flex-col">
           <p class="text-[11px] font-semibold text-slate-400 uppercase mb-1">Active Set</p>
-          <div id="set1-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-12"></div>
+          <div id="set1-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-24"></div>
         </div>
 
         <!-- Set 1 Reserve -->
@@ -143,7 +138,7 @@
     </section>
 
     <!-- Column 3: Set Two -->
-    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-140px)] min-h-[580px]">
+    <section class="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm h-[calc(100vh-175px)]">
       <div class="pb-3 border-b border-slate-800 flex items-center justify-between">
         <div>
           <h2 class="font-bold text-cyan-400 uppercase tracking-wider text-sm">SET TWO</h2>
@@ -156,7 +151,7 @@
         <!-- Main Set 2 list -->
         <div class="flex-1 overflow-y-auto pr-1 flex flex-col">
           <p class="text-[11px] font-semibold text-slate-400 uppercase mb-1">Active Set</p>
-          <div id="set2-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-12"></div>
+          <div id="set2-list" class="space-y-2 card-dropzone flex-1 min-h-[160px] pb-24"></div>
         </div>
 
         <!-- Set 2 Reserve -->
@@ -171,30 +166,17 @@
   <!-- Modal: Import Previous Setlist Text -->
   <div id="import-modal" class="modal-backdrop hidden">
     <div class="modal-window">
-      <h3 class="text-lg font-bold text-white mb-1">Import Previous Setlist</h3>
-      <p class="text-xs text-slate-400 mb-3">Paste a plain text setlist containing headers such as "SET ONE", "SET TWO", or "RESERVE":</p>
-      <textarea id="import-textarea" class="w-full h-48 bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="SET ONE&#10;Autumn Leaves&#10;Switch guitars&#10;Blue Bossa&#10;&#10;SET TWO&#10;C Jam Blues"></textarea>
+      <h3 class="text-lg font-bold text-white mb-2">Import Previous Setlist</h3>
+      <p class="text-xs text-slate-400 mb-3">Paste a plain text setlist with headers like "SET ONE", "SET TWO", or "RESERVE":</p>
+      <textarea id="import-textarea" class="w-full h-48 bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="SET ONE&#10;Autumn Leaves&#10;Blue Bossa&#10;&#10;SET TWO&#10;C Jam Blues"></textarea>
       <div class="flex justify-end gap-2 mt-4">
-        <button id="btn-close-import" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">Cancel</button>
-        <button id="btn-run-import" class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold">Import Setlist</button>
+        <button id="btn-close-import" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">Cancel</button>
+        <button id="btn-run-import" class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold">Import Text</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: Paste Sheet Data -->
-  <div id="paste-modal" class="modal-backdrop hidden">
-    <div class="modal-window">
-      <h3 class="text-lg font-bold text-white mb-1">Paste Sheet TSV Data</h3>
-      <p class="text-xs text-slate-400 mb-3">Copy rows directly from Google Sheets (including header or starting at row 4) and paste below:</p>
-      <textarea id="paste-textarea" class="w-full h-48 bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Paste tab-delimited cells directly from Google Sheets..."></textarea>
-      <div class="flex justify-end gap-2 mt-4">
-        <button id="btn-close-paste" class="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs">Cancel</button>
-        <button id="btn-run-paste" class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold">Parse Data</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Application Script -->
+  <!-- Main Application Script -->
   <script src="app.js"></script>
 </body>
 </html>

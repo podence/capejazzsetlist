@@ -1,515 +1,376 @@
 /**
  * Cape Jazz & Blues Setlist Builder
- * Modular, State-First JavaScript Implementation
+ * app.js - Direct CSV Ingestion matching index.html IDs
  */
 
-// 1. Global Visual Error Boundary
-window.onerror = function (message, source, lineno, colno, error) {
+// Visual error catcher: surface errors directly to the on-screen error banner
+window.addEventListener('error', (event) => {
   const banner = document.getElementById('error-banner');
-  const msgEl = document.getElementById('error-msg');
-  if (banner && msgEl) {
+  const msg = document.getElementById('error-msg');
+  if (banner && msg) {
     banner.classList.remove('hidden');
-    const filename = source ? source.split('/').pop() : 'script';
-    msgEl.innerText = `${message} (${filename}:${lineno}${colno ? ':' + colno : ''})`;
+    msg.innerText = `${event.message} (${event.filename ? event.filename.split('/').pop() : 'script'}:${event.lineno})`;
   }
-  return false;
-};
+});
 
-// 2. Constants & Data Source
 const SPREADSHEET_ID = '1BLrbe4BDbFx7-5XBRlo0ICproWUw6bJot-3rLwa4NJo';
 const SHEET_GID = '477864766';
 
-// 3. Application State
-const state = {
-  registry: new Map(), // Master lookup: ID -> Normalized Item Object
-  pool: [],            // Array of IDs
-  set1: [],            // Array of IDs
-  set1Res: [],         // Array of IDs
-  set2: [],            // Array of IDs
-  set2Res: [],         // Array of IDs
-  activeFilter: 'all', // 'all' | 'readyA' | 'readyB' | 'phil' | 'horns'
-  showHoliday: false
-};
-
-// Expose minimal namespace for inline click callbacks
+// Global app handlers exposed immediately before any DOM event runs
 window.app = {
   addCustomCue: (setKey) => {
-    const text = prompt("Enter stage cue (e.g., 'Switch guitars', 'Break'):", "Switch guitars");
+    const text = prompt("Enter stage cue (e.g. 'Switch guitars', 'Acoustic Guitar', 'Break'):", "Switch guitars");
     if (!text || !text.trim()) return;
-    const cueItem = createCueItem(text.trim());
-    state.registry.set(cueItem.id, cueItem);
+    const target = setKey === 'set1' ? document.getElementById('set1-list') : document.getElementById('set2-list');
+    if (!target) return;
 
-    if (setKey === 'set1') state.set1.push(cueItem.id);
-    else if (setKey === 'set2') state.set2.push(cueItem.id);
-
-    renderAllColumns();
+    target.appendChild(createCueCard(text.trim()));
+    updateSetStats();
   },
-  duplicateCard: (id, targetListKey) => {
-    const original = state.registry.get(id);
-    if (!original) return;
-
-    const dupId = `dup_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const cloned = { ...original, id: dupId };
-    state.registry.set(dupId, cloned);
-
-    if (Array.isArray(state[targetListKey])) {
-      const idx = state[targetListKey].indexOf(id);
-      if (idx !== -1) {
-        state[targetListKey].splice(idx + 1, 0, dupId);
-      } else {
-        state[targetListKey].push(dupId);
-      }
-    }
-    renderAllColumns();
-  },
-  removeCard: (id, targetListKey) => {
-    if (Array.isArray(state[targetListKey])) {
-      state[targetListKey] = state[targetListKey].filter(x => x !== id);
-    }
-    // If it's a cue or custom item not present in any other set, clean from registry
-    const isInAnySet = ['set1', 'set1Res', 'set2', 'set2Res', 'pool'].some(k => state[k].includes(id));
-    if (!isInAnySet && (id.startsWith('cue_') || id.startsWith('custom_') || id.startsWith('dup_'))) {
-      state.registry.delete(id);
-    }
-    renderAllColumns();
-  }
+  updateStats: () => updateSetStats()
 };
 
-// 4. Initialization
-document.addEventListener('DOMContentLoaded', () => {
+// State
+let allSongs = [];
+let activeFilter = 'all';
+let showHoliday = false;
+
+// Initialize as soon as DOM is ready or immediately if already loaded
+function startApp() {
+  setDefaultTitle();
+  initSortable();
   setupEventListeners();
-  initSortableInstances();
-  loadSheetDataGViz();
-});
+  loadSheetCSV();
+}
 
-// 5. Defensive Row Normalizer
-function normalizeSheetRow(rawRow, index) {
-  if (!rawRow) return null;
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startApp);
+} else {
+  startApp();
+}
 
-  // Handles both GViz row.c format and standard array row formats
-  const getVal = (colIdx) => {
-    if (Array.isArray(rawRow)) {
-      return (rawRow[colIdx] || '').toString().trim();
-    }
-    if (rawRow.c && Array.isArray(rawRow.c)) {
-      const cell = rawRow.c[colIdx];
-      if (!cell || cell.v === null || cell.v === undefined) return '';
-      return (cell.f || cell.v).toString().trim();
-    }
-    return '';
-  };
+// 1. Default Title: "Set List M/D/YY"
+function setDefaultTitle() {
+  const titleInput = document.getElementById('gig-title');
+  if (!titleInput) return;
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  const yy = String(now.getFullYear()).slice(-2);
+  titleInput.value = `Set List ${m}/${d}/${yy}`;
+}
 
-  const title = getVal(0);     // Col A
-  const genre = getVal(2);     // Col C
-  const rawReady = getVal(5).toUpperCase(); // Col F
-  const rawPhil = getVal(6);   // Col G
-  const rawHorns = getVal(7);  // Col H
-  const rawDuration = getVal(10); // Col K
-
-  if (!title) return null;
-
-  const isHoliday = /holiday|christmas|xmas/i.test(genre) ||
-                    /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
-
-  const ready = (rawReady === 'A' || rawReady === 'B') ? rawReady : '';
-
-  // Gating rule: Title exists AND (Readiness is 'A' or 'B' OR Genre contains Holiday/Christmas/Xmas)
-  if (!ready && !isHoliday) {
-    return null;
+// 2. Fetch CSV Directly from Google Sheets
+async function loadSheetCSV() {
+  const pool = document.getElementById('pool-list');
+  if (pool) {
+    pool.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Loading songs from Google Sheet...</div>';
   }
 
-  const pBass = rawPhil !== '' && rawPhil !== '0' && rawPhil.toLowerCase() !== 'no';
-  const horns = rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no';
-
-  return {
-    id: `song_${index}_${title.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-    isCue: false,
-    title,
-    genre: genre || 'Other',
-    ready,
-    pBass,
-    horns,
-    duration: rawDuration || '3:00',
-    isHoliday
-  };
-}
-
-function createCueItem(text) {
-  return {
-    id: `cue_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    isCue: true,
-    title: text,
-    duration: '0:00',
-    ready: '',
-    pBass: false,
-    horns: false,
-    genre: '',
-    isHoliday: false
-  };
-}
-
-// 6. Data Loading via GViz JSONP
-function loadSheetDataGViz() {
-  const poolContainer = document.getElementById('pool-list');
-  if (poolContainer) {
-    poolContainer.innerHTML = '<div class="p-3 text-slate-400 text-xs font-mono">⏳ Loading songs from Google Sheets...</div>';
-  }
-
-  const callbackName = 'handleGVizData_' + Math.floor(Math.random() * 100000);
-  window[callbackName] = function (data) {
-    try {
-      if (!data || !data.table || !Array.isArray(data.table.rows)) {
-        throw new Error("Invalid GViz JSONP payload received.");
-      }
-      ingestSheetRows(data.table.rows);
-    } catch (err) {
-      triggerErrorBanner("GViz Parsing Error: " + err.message);
-    } finally {
-      delete window[callbackName];
-      const el = document.getElementById(callbackName);
-      if (el) el.remove();
-    }
-  };
-
-  const script = document.createElement('script');
-  script.id = callbackName;
-  script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:${callbackName}&gid=${SHEET_GID}`;
-  script.onerror = function () {
-    triggerErrorBanner("Failed to connect to Google Sheets via GViz. Ensure the sheet is public.");
-    // Fallback attempt: Fetch CSV export directly
-    fallbackFetchCSV();
-  };
-  document.body.appendChild(script);
-}
-
-// CSV Fallback Loader if GViz encounters network/header blocks
-async function fallbackFetchCSV() {
   const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+
   try {
     const res = await fetch(csvUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    const rows = parseCSVText(text);
-    // Skip 3 header rows (indices 0, 1, 2)
-    ingestSheetRows(rows.slice(3));
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: Ensure Google Sheet is shared with 'Anyone with the link can view'`);
+    }
+    const csvText = await res.text();
+    parseCSVAndIngest(csvText);
   } catch (err) {
-    triggerErrorBanner("CSV Fallback also failed: " + err.message);
+    console.error('Sheet fetch error:', err);
+    if (pool) {
+      pool.innerHTML = `<div class="p-3 text-rose-300 bg-rose-950/80 border border-rose-800 rounded text-xs leading-relaxed">
+        <strong>Error loading songs:</strong><br>${err.message}
+      </div>`;
+    }
+    const banner = document.getElementById('error-banner');
+    const msg = document.getElementById('error-msg');
+    if (banner && msg) {
+      banner.classList.remove('hidden');
+      msg.innerText = `Google Sheet Load Failure: ${err.message}`;
+    }
   }
 }
 
-function parseCSVText(text) {
+// 3. Robust CSV Parser
+function parseCSV(text) {
   const lines = [];
   let row = [''];
   let inQuotes = false;
+
   for (let i = 0; i < text.length; i++) {
-    const c = text[i];
+    const char = text[i];
     const next = text[i + 1];
-    if (c === '"') {
-      if (inQuotes && next === '"') { row[row.length - 1] += '"'; i++; }
-      else { inQuotes = !inQuotes; }
-    } else if (c === ',' && !inQuotes) {
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        row[row.length - 1] += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
       row.push('');
-    } else if ((c === '\r' || c === '\n') && !inQuotes) {
-      if (c === '\r' && next === '\n') i++;
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
       lines.push(row);
       row = [''];
     } else {
-      row[row.length - 1] += c;
+      row[row.length - 1] += char;
     }
   }
   if (row.length > 1 || row[0] !== '') lines.push(row);
   return lines;
 }
 
-function ingestSheetRows(rawRows) {
-  state.registry.clear();
-  state.pool = [];
+// 4. Ingest & Gate Data
+function parseCSVAndIngest(csvText) {
+  const rows = parseCSV(csvText);
+  allSongs = [];
 
-  // Sheet data starts at row index 3 if passing whole table
-  // If rawRows is from GViz rows, index 0, 1, 2 are header rows
-  const startIndex = rawRows.length > 3 ? 3 : 0;
+  // Data starts at Sheet Row 4 (index 3). Row index 2 contains headers.
+  for (let i = 3; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length === 0) continue;
 
-  for (let i = startIndex; i < rawRows.length; i++) {
-    const item = normalizeSheetRow(rawRows[i], i);
-    if (item) {
-      state.registry.set(item.id, item);
-      state.pool.push(item.id);
+    const title = (r[0] || '').trim();
+    const genre = (r[2] || '').trim();
+    const rawReady = (r[5] || '').trim().toUpperCase();
+    const rawPBass = (r[6] || '').trim();
+    const rawHorns = (r[7] || '').trim();
+    const rawTime = (r[10] || '').trim();
+
+    // STRICT CRITERION: Title must exist AND Ready must be strictly 'A' or 'B'
+    if (!title || (rawReady !== 'A' && rawReady !== 'B')) {
+      continue;
     }
+
+    const isHoliday = /holiday/i.test(genre) ||
+                      /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(title);
+
+    allSongs.push({
+      id: `song_${i}_${title.replace(/[^a-zA-Z0-9]/g, '')}`,
+      title,
+      genre,
+      ready: rawReady,
+      pBass: rawPBass !== '' && rawPBass !== '0' && rawPBass.toLowerCase() !== 'no',
+      horns: rawHorns !== '' && rawHorns !== '0' && rawHorns.toLowerCase() !== 'no',
+      duration: rawTime || '3:00',
+      isHoliday
+    });
   }
 
-  renderAllColumns();
+  console.log(`Ingested ${allSongs.length} eligible songs (A/B Ready).`);
+  renderPool();
 }
 
-// 7. Rendering & Safe DOM Card Generation
-function getGenreColorClass(item) {
-  if (item.isHoliday) return 'title-holiday';
-  const g = (item.genre || '').toLowerCase();
+// Determine genre CSS class
+function getGenreTitleClass(song) {
+  if (song.isHoliday) return 'title-holiday';
+  const g = (song.genre || '').toLowerCase();
   if (g.includes('jazz')) return 'title-jazz';
   if (g.includes('blues')) return 'title-blues';
   return 'title-other';
 }
 
-function renderCardElement(item, listKey) {
-  const card = document.createElement('div');
-  const isCue = !!item.isCue;
-
-  card.setAttribute('data-id', item.id);
-  card.className = `card-item ${isCue ? 'card-cue' : 'card-song'} ${item.isHoliday ? 'genre-holiday-card' : ''}`;
-
-  if (isCue) {
-    card.innerHTML = `
-      <div class="flex items-center justify-between text-xs">
-        <span class="italic font-semibold pointer-events-none">📌 ${escapeHtml(item.title)}</span>
-        <div class="flex items-center gap-1">
-          ${listKey !== 'pool' ? `<button title="Duplicate" onclick="window.app.duplicateCard('${item.id}', '${listKey}')" class="card-btn text-rose-300">⎘</button>` : ''}
-          <button title="Remove" onclick="window.app.removeCard('${item.id}', '${listKey}')" class="card-btn text-rose-400 font-bold ml-1">✕</button>
-        </div>
-      </div>
-    `;
-    return card;
-  }
-
-  const titleClass = getGenreColorClass(item);
-  const readyLabel = item.ready ? `Ready ${item.ready}` : (item.id.startsWith('custom_') ? 'Custom' : 'Sheet');
-  const readyClass = item.ready === 'A' 
-    ? 'bg-emerald-950 text-emerald-400 border-emerald-800' 
-    : (item.ready === 'B' ? 'bg-blue-950 text-blue-400 border-blue-800' : 'bg-slate-800 text-slate-300 border-slate-700');
-
-  card.innerHTML = `
-    <div class="flex items-center justify-between mb-1">
-      <span class="${titleClass} font-semibold text-xs truncate mr-2">${escapeHtml(item.title)}</span>
-      <div class="flex items-center gap-1.5 shrink-0">
-        <span class="font-mono text-[11px] text-slate-400">${item.duration || '3:00'}</span>
-        ${listKey !== 'pool' ? `<button title="Duplicate" onclick="window.app.duplicateCard('${item.id}', '${listKey}')" class="card-btn text-slate-400 hover:text-white">⎘</button>` : ''}
-        ${listKey !== 'pool' ? `<button title="Remove" onclick="window.app.removeCard('${item.id}', '${listKey}')" class="card-btn text-rose-400 hover:text-rose-200">✕</button>` : ''}
-      </div>
-    </div>
-    <div class="flex items-center justify-between text-[10px]">
-      <div class="flex items-center gap-1">
-        <span class="px-1.5 py-0.5 rounded font-mono font-bold border ${readyClass}">
-          ${readyLabel}
-        </span>
-        ${item.pBass ? '<span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold">🎸 Bass</span>' : ''}
-        ${item.horns ? '<span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold">🎺 Horns</span>' : ''}
-      </div>
-      <span class="text-slate-500 italic truncate max-w-[110px]">${escapeHtml(item.genre || '')}</span>
-    </div>
-  `;
-
-  return card;
-}
-
-function renderAllColumns() {
-  renderPoolColumn();
-  renderSetColumn('set1-list', state.set1, 'set1');
-  renderSetColumn('set1-res-list', state.set1Res, 'set1Res');
-  renderSetColumn('set2-list', state.set2, 'set2');
-  renderSetColumn('set2-res-list', state.set2Res, 'set2Res');
-  updateTimers();
-}
-
-function renderPoolColumn() {
-  const poolEl = document.getElementById('pool-list');
+// 5. Render Candidate Cards to #pool-list
+function renderPool() {
+  const pool = document.getElementById('pool-list');
   const countBadge = document.getElementById('pool-count');
-  if (!poolEl) return;
+  if (!pool) return;
 
-  poolEl.innerHTML = '';
+  const assignedIds = new Set();
+  document.querySelectorAll('#set1-list [data-id], #set1-res-list [data-id], #set2-list [data-id], #set2-res-list [data-id]').forEach(el => {
+    assignedIds.add(el.getAttribute('data-id'));
+  });
 
-  const visiblePoolIds = state.pool.filter(id => {
-    const item = state.registry.get(id);
-    if (!item) return false;
-    if (item.isHoliday && !state.showHoliday) return false;
+  const visibleSongs = allSongs.filter(song => {
+    if (assignedIds.has(song.id)) return false;
+    if (song.isHoliday && !showHoliday) return false;
 
-    if (state.activeFilter === 'readyA' && item.ready !== 'A') return false;
-    if (state.activeFilter === 'readyB' && item.ready !== 'B') return false;
-    if (state.activeFilter === 'phil' && !item.pBass) return false;
-    if (state.activeFilter === 'horns' && !item.horns) return false;
+    if (activeFilter === 'readyA' && song.ready !== 'A') return false;
+    if (activeFilter === 'readyB' && song.ready !== 'B') return false;
+    if (activeFilter === 'phil' && !song.pBass) return false;
+    if (activeFilter === 'horns' && !song.horns) return false;
 
     return true;
   });
 
-  visiblePoolIds.forEach(id => {
-    const item = state.registry.get(id);
-    if (item) poolEl.appendChild(renderCardElement(item, 'pool'));
+  pool.innerHTML = '';
+
+  visibleSongs.forEach(song => {
+    pool.appendChild(createSongCard(song));
   });
 
-  if (countBadge) countBadge.innerText = visiblePoolIds.length;
+  if (countBadge) {
+    countBadge.innerText = visibleSongs.length;
+  }
 }
 
-function renderSetColumn(containerId, idArray, listKey) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  container.innerHTML = '';
-  idArray.forEach(id => {
-    const item = state.registry.get(id);
-    if (item) {
-      container.appendChild(renderCardElement(item, listKey));
-    }
+// 6. Song Card Builder
+function createSongCard(song) {
+  const card = document.createElement('div');
+  const holidayCardClass = song.isHoliday ? 'genre-holiday-card' : '';
+  card.className = `song-card card-song bg-slate-900 border border-slate-800 hover:border-slate-700 p-2.5 rounded select-none cursor-grab text-xs transition-colors ${holidayCardClass}`;
+  card.setAttribute('data-id', song.id);
+  card.setAttribute('data-title', song.title);
+  card.setAttribute('data-duration', song.duration);
+
+  const titleClass = getGenreTitleClass(song);
+
+  card.innerHTML = `
+    <div class="flex items-center justify-between mb-1.5 pointer-events-none">
+      <span class="${titleClass} font-semibold">${escapeHtml(song.title)}</span>
+      <span class="font-mono text-[11px] text-slate-400">${song.duration}</span>
+    </div>
+    <div class="flex items-center justify-between text-[10px] pointer-events-none">
+      <div class="flex items-center gap-1.5">
+        <span class="px-1.5 py-0.5 rounded font-mono font-bold ${song.ready === 'A' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : (song.ready === 'B' ? 'bg-blue-950 text-blue-400 border border-blue-800' : 'bg-slate-800 text-slate-300 border border-slate-700')}">
+          ${song.ready ? `Ready ${song.ready}` : 'Custom'}
+        </span>
+        ${song.pBass ? '<span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold">🎸 Bass</span>' : ''}
+        ${song.horns ? '<span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold">🎺 Horns</span>' : ''}
+      </div>
+      ${song.genre ? `<span class="text-slate-500 italic">${escapeHtml(song.genre)}</span>` : ''}
+    </div>
+  `;
+  return card;
+}
+
+// Cue Card Builder
+function createCueCard(text) {
+  const card = document.createElement('div');
+  card.className = 'song-card card-cue bg-rose-950/40 border border-rose-800 text-rose-200 p-2 rounded text-xs select-none cursor-grab flex items-center justify-between';
+  card.setAttribute('data-cue', 'true');
+  card.setAttribute('data-title', text);
+  card.innerHTML = `
+    <span class="italic font-semibold pointer-events-none">📌 ${escapeHtml(text)}</span>
+    <button type="button" class="btn-remove-cue text-rose-400 hover:text-rose-200 ml-2 font-bold cursor-pointer">✕</button>
+  `;
+
+  card.querySelector('.btn-remove-cue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    card.remove();
+    updateSetStats();
   });
+
+  return card;
 }
 
-// 8. Timers & Summary Calculation
-function parseDurationToSeconds(str) {
-  if (!str) return 180;
-  const parts = str.toString().trim().split(':').map(Number);
-  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-    return (parts[0] * 60) + parts[1];
-  }
-  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-    return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-  }
-  return 180;
+function escapeHtml(str) {
+  return str.replace(/[&<>'"]/g, tag => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;'
+  }[tag] || tag));
 }
 
-function updateTimers() {
-  const calcSet = (ids) => {
-    let count = 0;
-    let sec = 0;
-    ids.forEach(id => {
-      const item = state.registry.get(id);
-      if (item && !item.isCue) {
-        count++;
-        sec += parseDurationToSeconds(item.duration);
-      }
-    });
-    const mins = Math.floor(sec / 60);
-    const remSec = sec % 60;
-    return { count, timeStr: `${mins}:${remSec < 10 ? '0' : ''}${remSec}`, totalMins: Math.round(sec / 60) };
-  };
-
-  const s1 = calcSet(state.set1);
-  const s2 = calcSet(state.set2);
-
-  const set1Count = document.getElementById('set1-count');
-  const set1Time = document.getElementById('set1-time');
-  const set2Count = document.getElementById('set2-count');
-  const set2Time = document.getElementById('set2-time');
-
-  if (set1Count) set1Count.innerText = `${s1.count} songs`;
-  if (set1Time) set1Time.innerText = s1.timeStr;
-  if (set2Count) set2Count.innerText = `${s2.count} songs`;
-  if (set2Time) set2Time.innerText = s2.timeStr;
-}
-
-// 9. State-First SortableJS Event Bindings
-function initSortableInstances() {
+// 7. SortableJS Drag & Drop
+function initSortable() {
   if (typeof Sortable === 'undefined') {
-    triggerErrorBanner("SortableJS not detected. Recheck CDN script.");
+    console.warn('SortableJS library not loaded.');
     return;
   }
 
-  const listConfig = [
-    { el: document.getElementById('pool-list'), key: 'pool' },
-    { el: document.getElementById('set1-list'), key: 'set1' },
-    { el: document.getElementById('set1-res-list'), key: 'set1Res' },
-    { el: document.getElementById('set2-list'), key: 'set2' },
-    { el: document.getElementById('set2-res-list'), key: 'set2Res' }
-  ];
+  const containers = [
+    document.getElementById('pool-list'),
+    document.getElementById('set1-list'),
+    document.getElementById('set1-res-list'),
+    document.getElementById('set2-list'),
+    document.getElementById('set2-res-list')
+  ].filter(Boolean);
 
-  listConfig.forEach(({ el, key }) => {
-    if (!el) return;
-    new Sortable(el, {
+  containers.forEach(container => {
+    new Sortable(container, {
       group: 'setlist-builder',
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-drag',
       onEnd: (evt) => {
-        const fromKey = getListKeyByElement(evt.from);
-        const toKey = getListKeyByElement(evt.to);
-        const movedId = evt.item.getAttribute('data-id');
-
-        if (!fromKey || !toKey || !movedId) {
-          renderAllColumns();
-          return;
+        updateSetStats();
+        if (evt.to.id === 'pool-list' || evt.from.id === 'pool-list') {
+          renderPool();
         }
-
-        // State-first transaction: mutate internal state arrays, then re-render
-        if (fromKey === toKey) {
-          // Reorder within the same list
-          const list = state[fromKey];
-          const oldIndex = evt.oldIndex;
-          const newIndex = evt.newIndex;
-          if (oldIndex !== undefined && newIndex !== undefined) {
-            const [item] = list.splice(oldIndex, 1);
-            list.splice(newIndex, 0, item);
-          }
-        } else {
-          // Transfer across lists
-          state[fromKey] = state[fromKey].filter(id => id !== movedId);
-          const newIndex = evt.newIndex !== undefined ? evt.newIndex : state[toKey].length;
-          state[toKey].splice(newIndex, 0, movedId);
-        }
-
-        renderAllColumns();
       }
     });
   });
 }
 
-function getListKeyByElement(el) {
-  if (!el) return null;
-  if (el.id === 'pool-list') return 'pool';
-  if (el.id === 'set1-list') return 'set1';
-  if (el.id === 'set1-res-list') return 'set1Res';
-  if (el.id === 'set2-list') return 'set2';
-  if (el.id === 'set2-res-list') return 'set2Res';
-  return null;
+// 8. Timings & Counts
+function updateSetStats() {
+  calculateColumnStats('set1-list', 'set1-count', 'set1-time');
+  calculateColumnStats('set2-list', 'set2-count', 'set2-time');
 }
 
-// 10. Event Listeners & Modals
-function setupEventListeners() {
-  // Sync button
-  const syncBtn = document.getElementById('btn-reload-sheet');
-  if (syncBtn) syncBtn.addEventListener('click', () => loadSheetDataGViz());
+function calculateColumnStats(containerId, countId, timeId) {
+  const container = document.getElementById(containerId);
+  const countEl = document.getElementById(countId);
+  const timeEl = document.getElementById(timeId);
+  if (!container) return;
 
-  // Reset button
+  const cards = container.querySelectorAll('.song-card');
+  let totalSec = 0;
+  let songCount = 0;
+
+  cards.forEach(c => {
+    if (c.getAttribute('data-cue') === 'true') return;
+    songCount++;
+    const durStr = c.getAttribute('data-duration') || '3:00';
+    const parts = durStr.split(':').map(Number);
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      totalSec += (parts[0] * 60) + parts[1];
+    } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      totalSec += (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+    } else {
+      totalSec += 180;
+    }
+  });
+
+  if (countEl) countEl.innerText = `${songCount} songs`;
+  if (timeEl) {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    timeEl.innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+}
+
+// 9. Event Listeners & UI Hooks
+function setupEventListeners() {
+  const syncBtn = document.getElementById('btn-reload-sheet');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', () => loadSheetCSV());
+  }
+
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      // Re-pool all songs, clear sets
-      const allActive = [...state.set1, ...state.set1Res, ...state.set2, ...state.set2Res];
-      allActive.forEach(id => {
-        if (!id.startsWith('cue_') && !state.pool.includes(id)) {
-          state.pool.push(id);
-        }
-      });
-      state.set1 = [];
-      state.set1Res = [];
-      state.set2 = [];
-      state.set2Res = [];
-      renderAllColumns();
+      document.getElementById('set1-list').innerHTML = '';
+      document.getElementById('set1-res-list').innerHTML = '';
+      document.getElementById('set2-list').innerHTML = '';
+      document.getElementById('set2-res-list').innerHTML = '';
+      updateSetStats();
+      renderPool();
     });
   }
 
-  // Filter chips
   document.querySelectorAll('[data-filter]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      state.activeFilter = btn.getAttribute('data-filter');
-      renderPoolColumn();
+      activeFilter = btn.getAttribute('data-filter');
+      renderPool();
     });
   });
 
-  // Holiday filter chip
   const holidayBtn = document.getElementById('btn-holiday-toggle');
   if (holidayBtn) {
     holidayBtn.addEventListener('click', () => {
-      state.showHoliday = !state.showHoliday;
-      holidayBtn.classList.toggle('active', state.showHoliday);
-      document.body.classList.toggle('holiday-highlight', state.showHoliday);
-      renderPoolColumn();
-    });
-  }
-
-  // Persistent Cue Card Button
-  const persistentCueBtn = document.getElementById('btn-persistent-cue');
-  if (persistentCueBtn) {
-    persistentCueBtn.addEventListener('click', () => {
-      const cue = createCueItem('Switch guitars');
-      state.registry.set(cue.id, cue);
-      state.set1.push(cue.id);
-      renderAllColumns();
+      showHoliday = !showHoliday;
+      holidayBtn.classList.toggle('active', showHoliday);
+      document.body.classList.toggle('holiday-highlight', showHoliday);
+      renderPool();
     });
   }
 
@@ -525,242 +386,243 @@ function setupEventListeners() {
   }
 
   const btnStandard = document.getElementById('btn-export-standard');
-  if (btnStandard) btnStandard.addEventListener('click', () => exportWordDocument('standard'));
+  if (btnStandard) {
+    btnStandard.addEventListener('click', () => exportWordDoc('standard'));
+  }
 
   const btnGeoff = document.getElementById('btn-export-geoff');
-  if (btnGeoff) btnGeoff.addEventListener('click', () => exportWordDocument('geoff'));
+  if (btnGeoff) {
+    btnGeoff.addEventListener('click', () => exportWordDoc('geoff'));
+  }
 
-  // Modals Wiring
-  setupTextImportModal();
-  setupPasteSheetModal();
+  // Setup Plain Text Import Modal
+  setupImportModal();
 }
 
-// 11. Modal Handlers
-function setupTextImportModal() {
-  const modal = document.getElementById('import-modal');
+// 10. Plain Text Import Modal Logic
+function setupImportModal() {
+  const importModal = document.getElementById('import-modal');
   const openBtn = document.getElementById('btn-open-import-modal');
   const closeBtn = document.getElementById('btn-close-import');
   const runBtn = document.getElementById('btn-run-import');
   const textarea = document.getElementById('import-textarea');
 
-  if (!modal || !openBtn || !closeBtn || !runBtn || !textarea) return;
+  if (!importModal || !openBtn || !closeBtn || !runBtn || !textarea) return;
 
   openBtn.addEventListener('click', () => {
     textarea.value = '';
-    modal.classList.remove('hidden');
+    importModal.classList.remove('hidden');
     textarea.focus();
   });
-  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+
+  closeBtn.addEventListener('click', () => {
+    importModal.classList.add('hidden');
+  });
 
   runBtn.addEventListener('click', () => {
-    const text = textarea.value.trim();
-    if (text) parseAndImportText(text);
-    modal.classList.add('hidden');
+    const rawText = textarea.value.trim();
+    if (!rawText) {
+      importModal.classList.add('hidden');
+      return;
+    }
+    parseAndImportText(rawText);
+    importModal.classList.add('hidden');
   });
 }
 
 function parseAndImportText(text) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  let currentTargetKey = null;
+  let currentTarget = null;
+  let parsedTitle = null;
 
-  // Move existing set songs back to pool
-  const currentSetSongs = [...state.set1, ...state.set1Res, ...state.set2, ...state.set2Res];
-  currentSetSongs.forEach(id => {
-    if (!id.startsWith('cue_') && !state.pool.includes(id)) {
-      state.pool.push(id);
-    }
-  });
-
-  state.set1 = [];
-  state.set1Res = [];
-  state.set2 = [];
-  state.set2Res = [];
+  // Clear existing sets before importing
+  document.getElementById('set1-list').innerHTML = '';
+  document.getElementById('set1-res-list').innerHTML = '';
+  document.getElementById('set2-list').innerHTML = '';
+  document.getElementById('set2-res-list').innerHTML = '';
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const upper = line.toUpperCase();
 
+    // 1. Check for Set / Section Headers
     if (upper.includes('SET ONE') || upper.includes('SET 1')) {
-      currentTargetKey = 'set1';
+      currentTarget = document.getElementById('set1-list');
       continue;
     }
     if (upper.includes('SET TWO') || upper.includes('SET 2')) {
-      currentTargetKey = 'set2';
+      currentTarget = document.getElementById('set2-list');
       continue;
     }
     if (upper.includes('RESERVE') || upper.includes('ALTERNATES')) {
-      currentTargetKey = currentTargetKey === 'set1' ? 'set1Res' : 'set2Res';
+      // Default to Set 2 reserve if we're past Set 1, otherwise Set 1 reserve
+      if (currentTarget === document.getElementById('set1-list')) {
+        currentTarget = document.getElementById('set1-res-list');
+      } else {
+        currentTarget = document.getElementById('set2-res-list');
+      }
       continue;
     }
 
-    // Setlist title before any headers
-    if (!currentTargetKey) {
-      const gigTitleInput = document.getElementById('gig-title');
-      if (gigTitleInput) gigTitleInput.value = line;
+    // 2. Text encountered BEFORE any set header is treated as the Setlist / Gig Title
+    if (!currentTarget) {
+      if (!parsedTitle) {
+        parsedTitle = line;
+        const gigTitleInput = document.getElementById('gig-title');
+        if (gigTitleInput) gigTitleInput.value = line;
+      }
       continue;
     }
 
-    // Skip summary lines
+    // 3. Ignore summary lines (e.g. "15 songs 60 mins.", "15 Songs – 60 mins.", "12 songs", "45 mins")
     if (/\b\d+\s*songs?\b/i.test(line) || /\b\d+\s*mins?\.?\b/i.test(line)) {
       continue;
     }
 
-    // Clean leading bullets / numbering
-    const clean = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
-    if (!clean) continue;
+    // 4. Strip leading numbering, bullets, dashes (e.g., "1. Song", "- Song", "1 ) Song")
+    const cleanedLine = line.replace(/^[\d]+[\.\)\-\s]+/, '').replace(/^[\-\*•]\s*/, '').trim();
+    if (!cleanedLine) continue;
 
-    // Detect cue lines
-    const lower = clean.toLowerCase();
-    const isCue = /^switch\b/i.test(clean) ||
-                  /^cue\s*:/i.test(clean) ||
-                  lower === 'acoustic guitar' ||
-                  lower === 'break' ||
-                  lower === 'intermission';
+    const lowerCleaned = cleanedLine.toLowerCase();
 
-    if (isCue) {
-      const cue = createCueItem(clean);
-      state.registry.set(cue.id, cue);
-      state[currentTargetKey].push(cue.id);
+    // 5. Cues logic:
+    // Anything starting with "switch", "cue:", or explicitly designated cues
+    const isExplicitCue = /^switch\b/i.test(cleanedLine) ||
+                          /^cue\s*:/i.test(cleanedLine) ||
+                          lowerCleaned === 'acoustic guitar' ||
+                          lowerCleaned === 'break' ||
+                          lowerCleaned === 'intermission';
+
+    if (isExplicitCue) {
+      currentTarget.appendChild(createCueCard(cleanedLine));
       continue;
     }
 
-    // Match song in registry
-    const norm = lower.replace(/[^a-z0-9]/g, '');
-    let foundId = Array.from(state.registry.keys()).find(k => {
-      const item = state.registry.get(k);
-      return !item.isCue && item.title.toLowerCase().replace(/[^a-z0-9]/g, '') === norm;
-    });
+    // 6. Song Matching:
+    // Try exact alphanumeric match against allSongs from the sheet
+    const normLine = lowerCleaned.replace(/[^a-z0-9]/g, '');
+    let matchedSong = allSongs.find(s => s.title.toLowerCase().replace(/[^a-z0-9]/g, '') === normLine);
 
-    if (!foundId && norm.length > 4) {
-      foundId = Array.from(state.registry.keys()).find(k => {
-        const item = state.registry.get(k);
-        if (item.isCue) return false;
-        const sNorm = item.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return sNorm.includes(norm) || norm.includes(sNorm);
+    // If no direct alphanumeric match, try containment match (e.g. "Fly Me to the Moon" matching "Fly Me To The Moon (In Other Words)")
+    if (!matchedSong && normLine.length > 5) {
+      matchedSong = allSongs.find(s => {
+        const normSheet = s.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return normSheet.includes(normLine) || normLine.includes(normSheet);
       });
     }
 
-    if (foundId) {
-      state.pool = state.pool.filter(id => id !== foundId);
-      state[currentTargetKey].push(foundId);
+    if (matchedSong) {
+      currentTarget.appendChild(createSongCard(matchedSong));
     } else {
-      // Create custom song item
-      const customItem = {
-        id: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        isCue: false,
-        title: clean,
+      // 7. Unknown song: Default to treating as a regular SONG rather than a cue!
+      const fallbackSong = {
+        id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        title: cleanedLine,
         genre: 'Other',
         ready: '',
         pBass: false,
         horns: false,
         duration: '3:00',
-        isHoliday: /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(clean)
+        isHoliday: /\b(christmas|xmas|santa|noel|winter wonderland|jingle)\b/i.test(cleanedLine)
       };
-      state.registry.set(customItem.id, customItem);
-      state[currentTargetKey].push(customItem.id);
+      currentTarget.appendChild(createSongCard(fallbackSong));
     }
   }
 
-  renderAllColumns();
+  updateSetStats();
+  renderPool();
 }
 
-function setupPasteSheetModal() {
-  const modal = document.getElementById('paste-modal');
-  const openBtn = document.getElementById('btn-open-paste-modal');
-  const closeBtn = document.getElementById('btn-close-paste');
-  const runBtn = document.getElementById('btn-run-paste');
-  const textarea = document.getElementById('paste-textarea');
+// 11. Word Document Generation
+function exportWordDoc(format = 'standard') {
+  const gigTitle = document.getElementById('gig-title')?.value || "Cape Jazz & Blues Setlist";
 
-  if (!modal || !openBtn || !closeBtn || !runBtn || !textarea) return;
+  const getSetStatsData = (containerId) => {
+    const container = document.getElementById(containerId);
+    if (!container) return { count: 0, mins: 0 };
+    const cards = container.querySelectorAll('.song-card');
+    let totalSec = 0;
+    let songCount = 0;
 
-  openBtn.addEventListener('click', () => {
-    textarea.value = '';
-    modal.classList.remove('hidden');
-    textarea.focus();
-  });
-  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
-
-  runBtn.addEventListener('click', () => {
-    const raw = textarea.value.trim();
-    if (raw) {
-      const lines = raw.split(/\r?\n/).map(line => line.split('\t'));
-      ingestSheetRows(lines);
-    }
-    modal.classList.add('hidden');
-  });
-}
-
-// 12. Word Document Export (.doc HTML format)
-function exportWordDocument(format = 'standard') {
-  const gigTitle = document.getElementById('gig-title')?.value || "Set List Name";
-
-  const getSetMetrics = (idArray) => {
-    let count = 0;
-    let sec = 0;
-    idArray.forEach(id => {
-      const item = state.registry.get(id);
-      if (item && !item.isCue) {
-        count++;
-        sec += parseDurationToSeconds(item.duration);
+    cards.forEach(c => {
+      if (c.getAttribute('data-cue') === 'true') return;
+      songCount++;
+      const durStr = c.getAttribute('data-duration') || '3:00';
+      const parts = durStr.split(':').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        totalSec += (parts[0] * 60) + parts[1];
+      } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        totalSec += (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+      } else {
+        totalSec += 180;
       }
     });
-    return { count, mins: Math.round(sec / 60) };
+
+    return { count: songCount, mins: Math.round(totalSec / 60) };
   };
 
-  const buildColumnHtml = (mainIds, resIds, headerLabel) => {
-    const mainItems = mainIds.map(id => state.registry.get(id)).filter(Boolean);
-    const resItems = resIds.map(id => state.registry.get(id)).filter(Boolean);
-    const stats = getSetMetrics(mainIds);
+  const buildSetHtml = (listId, resId, label) => {
+    const mainCards = document.querySelectorAll(`#${listId} .song-card`);
+    const resCards = document.querySelectorAll(`#${resId} .song-card`);
+    if (mainCards.length === 0 && resCards.length === 0) return '';
 
-    const sectionHeaderStyle = format === 'geoff'
-      ? 'color: #D60000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 6pt; text-transform: uppercase;'
+    const stats = getSetStatsData(listId);
+
+    const headerStyle = format === 'geoff'
+      ? 'color: #000000; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 6pt; text-transform: uppercase;'
       : 'color: #000000; font-size: 14pt; font-weight: bold; text-transform: uppercase; margin-bottom: 6pt;';
 
-    let html = `<div style="${sectionHeaderStyle}">${headerLabel}</div>`;
+    let html = `<div style="${headerStyle}">${label}</div>`;
 
-    mainItems.forEach(item => {
-      if (item.isCue) {
+    mainCards.forEach(c => {
+      const isCue = c.getAttribute('data-cue') === 'true';
+      const title = c.getAttribute('data-title') || c.innerText.trim();
+
+      if (isCue) {
         if (format === 'geoff') {
-          html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 18pt; margin: 2pt 0;">${escapeHtml(item.title)}</div>`;
+          html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         } else {
-          html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(item.title)}</div>`;
+          html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         }
       } else {
         if (format === 'geoff') {
-          html += `<div style="color: #1F4E79; font-weight: bold; font-size: 18pt; margin: 2pt 0;">${escapeHtml(item.title)} <span style="color: #D60000; font-weight: normal; font-size: 14pt;">${item.duration}</span></div>`;
+          html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         } else {
-          html += `<div style="color: #000000; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(item.title)} <span style="color: #666666; font-size: 11pt;">(${item.duration})</span></div>`;
+          html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
         }
       }
     });
 
     if (stats.count > 0) {
       if (format === 'geoff') {
-        html += `<div style="color: #D60000; font-size: 18pt; font-weight: bold; margin-top: 8pt; margin-bottom: 8pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+        html += `<div style="color: #C00000; font-size: 15pt; font-weight: normal; margin-top: 8pt; margin-bottom: 8pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
       } else {
-        html += `<div style="color: #000000; font-size: 13.5pt; font-weight: bold; margin-top: 6pt; margin-bottom: 6pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
+        html += `<div style="color: #000000; font-size: 13.5pt; font-weight: normal; margin-top: 6pt; margin-bottom: 6pt;">${stats.count} songs – ${stats.mins} mins.</div>`;
       }
     }
 
-    if (resItems.length > 0) {
+    if (resCards.length > 0) {
       const resHeaderStyle = format === 'geoff'
-        ? 'color: #D60000; font-size: 18pt; font-weight: bold; text-decoration: none; margin-top: 10pt; margin-bottom: 4pt;'
+        ? 'color: #C00000; font-size: 18pt; font-weight: normal; text-decoration: none; margin-top: 10pt; margin-bottom: 4pt;'
         : 'color: #000000; font-size: 13pt; font-weight: bold; margin-top: 10pt; margin-bottom: 4pt;';
 
       html += `<div style="${resHeaderStyle}">Reserve</div>`;
 
-      resItems.forEach(item => {
-        if (item.isCue) {
+      resCards.forEach(c => {
+        const isCue = c.getAttribute('data-cue') === 'true';
+        const title = c.getAttribute('data-title') || c.innerText.trim();
+
+        if (isCue) {
           if (format === 'geoff') {
-            html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 18pt; margin: 2pt 0;">${escapeHtml(item.title)}</div>`;
+            html += `<div style="color: #1F4E79; text-decoration: underline; font-style: italic; font-size: 15pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
           } else {
-            html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(item.title)}</div>`;
+            html += `<div style="color: #555555; font-style: italic; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
           }
         } else {
           if (format === 'geoff') {
-            html += `<div style="color: #1F4E79; font-weight: bold; font-size: 18pt; margin: 2pt 0;">${escapeHtml(item.title)} <span style="color: #D60000; font-weight: normal; font-size: 14pt;">${item.duration}</span></div>`;
+            html += `<div style="color: #3B6E8C; font-weight: normal; font-size: 16pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
           } else {
-            html += `<div style="color: #000000; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(item.title)} <span style="color: #666666; font-size: 11pt;">(${item.duration})</span></div>`;
+            html += `<div style="color: #000000; font-weight: normal; font-size: 13.5pt; margin: 2pt 0;">${escapeHtml(title)}</div>`;
           }
         }
       });
@@ -769,24 +631,24 @@ function exportWordDocument(format = 'standard') {
     return html;
   };
 
-  const col1Html = buildColumnHtml(state.set1, state.set1Res, 'SET ONE');
-  const col2Html = buildColumnHtml(state.set2, state.set2Res, 'SET TWO');
+  const col1Html = buildSetHtml('set1-list', 'set1-res-list', 'SET ONE');
+  const col2Html = buildSetHtml('set2-list', 'set2-res-list', 'SET TWO');
 
   const titleStyle = format === 'geoff'
-    ? 'color: #D60000; font-size: 22pt; font-weight: bold; text-align: center; margin-bottom: 16pt;'
-    : 'color: #000000; font-size: 16pt; font-weight: bold; text-align: center; margin-bottom: 14pt;';
+    ? 'color: #D60000; font-size: 28pt; font-weight: bold; text-align: center; margin-bottom: 18pt; text-shadow: 2px 2px 0px #ffffff, -1px -1px 0px #ffffff, 1px -1px 0px #ffffff, -1px 1px 0px #ffffff, 3px 3px 4px rgba(0,0,0,0.6);'
+    : 'color: #000000; font-size: 16pt; font-weight: bold; margin-bottom: 14pt;';
 
-  const docHtml = `
+  const docContent = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
     <head>
       <meta charset='utf-8'>
       <title>${escapeHtml(gigTitle)}</title>
       <style>
-        @page { size: 8.5in 11in; margin: 0.65in; }
+        @page { size: 8.5in 11in; margin: 0.75in; }
         body { font-family: ${format === 'geoff' ? "'Calibri', sans-serif" : "'Aptos', sans-serif"}; color: #000; }
         table { width: 100%; border-collapse: collapse; }
-        td { width: 50%; vertical-align: top; padding-right: 18pt; }
-        td + td { padding-right: 0; padding-left: 18pt; }
+        td { width: 50%; vertical-align: top; padding-right: 20pt; }
+        td + td { padding-right: 0; padding-left: 20pt; }
       </style>
     </head>
     <body>
@@ -796,7 +658,7 @@ function exportWordDocument(format = 'standard') {
     </html>
   `;
 
-  const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword' });
+  const blob = new Blob(['\ufeff', docContent], { type: 'application/msword' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -805,25 +667,4 @@ function exportWordDocument(format = 'standard') {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
-
-// 13. Helpers
-function escapeHtml(str) {
-  if (!str) return '';
-  return str.toString().replace(/[&<>'"]/g, tag => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    "'": '&#39;',
-    '"': '&quot;'
-  }[tag] || tag));
-}
-
-function triggerErrorBanner(msg) {
-  const banner = document.getElementById('error-banner');
-  const msgEl = document.getElementById('error-msg');
-  if (banner && msgEl) {
-    banner.classList.remove('hidden');
-    msgEl.innerText = msg;
-  }
 }
